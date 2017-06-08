@@ -21,8 +21,10 @@ START_TOKEN = 60
 
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.03  # how quickly to move from supervised training to unsupervised
+SUP_BASELINE = 0.3 # Decrease ratio of supervised training to this baseline ratio.
 TRAIN_ITER = 20000  # generator/discriminator alternating
-D_STEPS = 2  # how many times to train the discriminator per generator step
+G_STEPS = 4  # how many times to train the generator each round
+D_STEPS = 2  # how many times to train the discriminator per generator steps
 LEARNING_RATE = 1e-4 * SEQ_LENGTH
 SEED = 88
 
@@ -77,7 +79,7 @@ def main():
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
 
-    
+
     with open("genx_sup.txt", 'w') as supfile:
         pass
 
@@ -90,11 +92,11 @@ def main():
     print('training')
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
-        proportion_supervised = max(0.0, 1.0 - CURRICULUM_RATE * epoch)
+        proportion_supervised = max(SUP_BASELINE, 1.0 - CURRICULUM_RATE * epoch)
         train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
-            g_steps=1, d_steps=D_STEPS,
+            g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
             verify_sequence=verify_sequence)
 
