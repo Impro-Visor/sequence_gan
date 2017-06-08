@@ -35,15 +35,21 @@ def train_epoch(sess, trainable_model, num_iter,
     unsupervised_correct_generation = [0]
     supervised_gen_x = None
     unsupervised_gen_x = None
+    actual_seq = None
     print('running %d iterations with %d g steps and %d d steps' % (num_iter, g_steps, d_steps))
     print('of the g steps, %.2f will be supervised' % proportion_supervised)
     for it in range(num_iter):
         for _ in range(g_steps):
             if random.random() < proportion_supervised:
                 seq = next_sequence()
+                actual_seq = seq
                 _, g_loss, g_pred = trainable_model.pretrain_step(sess, seq)
                 supervised_g_losses.append(g_loss)
-
+                if np.isnan(g_loss):
+                    try:
+                        print('NAN DEBUG. PRED: ' + str(g_pred))
+                    except ValueError:
+                        print("VALUE ERROR")
                 supervised_gen_x = np.argmax(g_pred, axis=1)
                 if verify_sequence is not None:
                     supervised_correct_generation.append(
@@ -53,7 +59,11 @@ def train_epoch(sess, trainable_model, num_iter,
                     trainable_model.train_g_step(sess)
                 expected_rewards.append(expected_reward)
                 unsupervised_g_losses.append(g_loss)
-
+                if np.isnan(g_loss):
+                    try:
+                        print('NAN DEBUG. GEN_X: ' + str(unsupervised_gen_x))
+                    except ValueError:
+                        print("VALUE ERROR")
                 if verify_sequence is not None:
                     unsupervised_correct_generation.append(
                         verify_sequence(unsupervised_gen_x))
@@ -72,6 +82,15 @@ def train_epoch(sess, trainable_model, num_iter,
     if verify_sequence is not None:
         print('>>>> correct generations (supervised, unsupervised):', np.mean(supervised_correct_generation), np.mean(unsupervised_correct_generation))
     print('>>>> sampled generations (supervised, unsupervised):',)
-    print([words[x] if words else x for x in supervised_gen_x] if supervised_gen_x is not None else None,)
-    print([words[x] if words else x for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None)
+    sup_gen_x = [words[x] if words else x for x in supervised_gen_x] if supervised_gen_x is not None else None
+
+    with open("genx_act.txt", 'a') as actfile:
+        actfile.write(str(actual_seq)+",\n")
+    with open("genx_sup.txt", 'a') as supfile:
+        supfile.write(str(sup_gen_x)+",\n")
+    print(sup_gen_x,)
+    unsup_gen_x = [words[x] if words else x for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
+    with open("genx_unsup.txt", 'a') as unsupfile:
+        unsupfile.write(str(unsup_gen_x)+",\n")
+    print(unsup_gen_x)
     print('>>>> expected rewards:', np.mean(expected_rewards, axis=0))

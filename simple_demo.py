@@ -77,6 +77,16 @@ def main():
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
 
+    
+    with open("genx_sup.txt", 'w') as supfile:
+        pass
+
+    with open("genx_unsup.txt", 'w') as supfile:
+        pass
+
+    with open("genx_act.txt", 'w') as supfile:
+        pass
+
     print('training')
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
