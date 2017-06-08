@@ -179,13 +179,13 @@ class RNN(object):
 
         self.reward_loss = tf.reduce_mean(normalized_rewards ** 2)
         self.g_loss = \
-            -tf.reduce_mean(tf.log(self.gen_o.stack()) * normalized_rewards)
+            -tf.reduce_mean(tf.log(tf.clip_by_value(self.gen_o.stack(),1e-7,1e7)) * normalized_rewards)
 
         # pretraining loss
         self.pretrain_loss = \
             (-tf.reduce_sum(
                 tf.one_hot(tf.to_int64(self.x),
-                           self.num_emb, 1.0, 0.0) * tf.log(self.g_predictions))
+                           self.num_emb, 1.0, 0.0) * tf.log(tf.clip_by_value(self.g_predictions,1e-7,1e7)))
              / self.sequence_length)
 
         # training updates
