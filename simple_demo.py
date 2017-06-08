@@ -6,14 +6,14 @@ __doc__ = """Simple demo on ii-V-I leadsheets.
 
 import model
 import train
-
+import json
 import numpy as np
 import tensorflow as tf
 import random
 
 DPATH = "./parsed_ii-V-I_leadsheets/melodies.json"
 
-NUM_EMB = 36
+NUM_EMB = 129
 EMB_DIM = 10
 HIDDEN_DIM = 128
 SEQ_LENGTH = 96
@@ -28,8 +28,6 @@ D_STEPS = 2  # how many times to train the discriminator per generator steps
 LEARNING_RATE = 1e-4 * SEQ_LENGTH
 SEED = 88
 
-sequences = None
-
 def get_trainable_model():
     return model.GRU(
         NUM_EMB, EMB_DIM, HIDDEN_DIM,
@@ -43,16 +41,18 @@ def verify_sequence(seq):
     """
     return True
 
-def set_sequences(datapath):
+def get_sequences(datapath):
     """
     Get the training set of sequences.
     """
+    sequences = []
     with open(datapath,'r') as datafile:
         sequences = json.load(datafile)
         for i in range(len(sequences)):
             sequences[i] = sequences[i][:SEQ_LENGTH]
+    return sequences
 
-def get_random_sequence():
+def get_random_sequence(sequences):
     """
     Get a random note sequence from training set.
     """
@@ -72,8 +72,6 @@ def test_sequence_definition():
 def main():
     random.seed(SEED)
     np.random.seed(SEED)
-
-    set_sequences(DPATH)
 
     trainable_model = get_trainable_model()
     sess = tf.Session()
@@ -98,6 +96,7 @@ def main():
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
+            sequences=get_sequences(DPATH),
             verify_sequence=verify_sequence)
 
 

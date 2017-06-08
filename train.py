@@ -8,7 +8,7 @@ import random
 
 def train_epoch(sess, trainable_model, num_iter,
                 proportion_supervised, g_steps, d_steps,
-                next_sequence, verify_sequence=None,
+                next_sequence, sequences, verify_sequence=None,
                 words=None,
                 proportion_generated=0.5):
     """Perform training for model.
@@ -41,7 +41,7 @@ def train_epoch(sess, trainable_model, num_iter,
     for it in range(num_iter):
         for _ in range(g_steps):
             if random.random() < proportion_supervised:
-                seq = next_sequence()
+                seq = next_sequence(sequences)
                 actual_seq = seq
                 _, g_loss, g_pred = trainable_model.pretrain_step(sess, seq)
                 supervised_g_losses.append(g_loss)
@@ -70,7 +70,7 @@ def train_epoch(sess, trainable_model, num_iter,
 
         for _ in range(d_steps):
             if random.random() < proportion_generated:
-                seq = next_sequence()
+                seq = next_sequence(sequences)
                 _, d_loss = trainable_model.train_d_real_step(sess, seq)
             else:
                 _, d_loss = trainable_model.train_d_gen_step(sess)
