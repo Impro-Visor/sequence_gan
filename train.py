@@ -83,14 +83,8 @@ def train_epoch(sess, trainable_model, num_iter,
         print('>>>> correct generations (supervised, unsupervised):', np.mean(supervised_correct_generation), np.mean(unsupervised_correct_generation))
     print('>>>> sampled generations (supervised, unsupervised):',)
     sup_gen_x = [words[x] if words else x for x in supervised_gen_x] if supervised_gen_x is not None else None
-
-    with open("genx_act.txt", 'a') as actfile:
-        actfile.write(str(actual_seq)+",\n")
-    with open("genx_sup.txt", 'a') as supfile:
-        supfile.write(str(sup_gen_x)+",\n")
     print(sup_gen_x,)
     unsup_gen_x = [words[x] if words else x for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
-    with open("genx_unsup.txt", 'a') as unsupfile:
-        unsupfile.write(str(unsup_gen_x)+",\n")
     print(unsup_gen_x)
     print('>>>> expected rewards:', np.mean(expected_rewards, axis=0))
+    return actual_seq, sup_gen_x, unsup_gen_x

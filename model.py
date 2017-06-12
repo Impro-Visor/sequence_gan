@@ -25,6 +25,7 @@ def _backwards_cumsum(x, length):
             [length])
 
 
+
 class RNN(object):
 
     def __init__(self, num_emb, emb_dim, hidden_dim,
@@ -74,6 +75,7 @@ class RNN(object):
             sample = samples.read(i)
             o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
             next_token = tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum)))  # sample
+            tf.Print(next_token,[next_token],message="Next token is: ")
             x_tp1 = tf.gather(self.g_embeddings, next_token)
             gen_o = gen_o.write(i, tf.gather(o_t, next_token))  # we only need the sampled token's probability
             gen_x = gen_x.write(i, next_token)  # indices, not embeddings
@@ -247,12 +249,15 @@ class RNN(object):
     def init_vector(self, shape):
         return tf.zeros(shape)
 
-    def create_recurrent_unit(self, params):
-        self.W_rec = tf.Variable(self.init_matrix([self.hidden_dim, self.emb_dim]))
-        params.append(self.W_rec)
-        def unit(x_t, h_tm1):
-            return h_tm1 + tf.reshape(tf.matmul(self.W_rec, tf.reshape(x_t, [self.emb_dim, 1])), [self.hidden_dim])
-        return unit
+    # This method seems to be overridden by the GRU create_recurrent_unit() method.
+    # Commented out for clarity.
+    # 
+    # def create_recurrent_unit(self, params):
+    #     self.W_rec = tf.Variable(self.init_matrix([self.hidden_dim, self.emb_dim]))
+    #     params.append(self.W_rec)
+    #     def unit(x_t, h_tm1):
+    #         return h_tm1 + tf.reshape(tf.matmul(self.W_rec, tf.reshape(x_t, [self.emb_dim, 1])), [self.hidden_dim])
+    #     return unit
 
     def create_output_unit(self, params, embeddings):
         self.W_out = tf.Variable(self.init_matrix([self.emb_dim, self.hidden_dim]))

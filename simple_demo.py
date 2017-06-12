@@ -13,19 +13,19 @@ import random
 
 DPATH = "./parsed_ii-V-I_leadsheets/melodies.json"
 
-NUM_EMB = 129
+NUM_EMB = 36 # Number of possible "characters" in the sequence. 35 note vals, 1 for rest, 1 for sustain,
 EMB_DIM = 10
-HIDDEN_DIM = 128
+HIDDEN_DIM = 70
 SEQ_LENGTH = 96
-START_TOKEN = 60
+START_TOKEN = 5 # Middle C
 
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.03  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.3 # Decrease ratio of supervised training to this baseline ratio.
-TRAIN_ITER = 20000  # generator/discriminator alternating
+TRAIN_ITER = 5000  # generator/discriminator alternating
 G_STEPS = 4  # how many times to train the generator each round
-D_STEPS = 2  # how many times to train the discriminator per generator steps
-LEARNING_RATE = 1e-4 * SEQ_LENGTH
+D_STEPS = 1  # how many times to train the discriminator per generator steps
+LEARNING_RATE = 1e-2 * SEQ_LENGTH
 SEED = 88
 
 def get_trainable_model():
@@ -88,17 +88,25 @@ def main():
         pass
 
     print('training')
+    actuals = []
+    sups = []
+    unsups = []
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
         proportion_supervised = max(SUP_BASELINE, 1.0 - CURRICULUM_RATE * epoch)
-        train.train_epoch(
+        actual_seq, sup_gen_x, unsup_gen_x = train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
             sequences=get_sequences(DPATH),
-            verify_sequence=verify_sequence)
-
+            verify_sequence=None)
+        actuals.append(actual_seq)
+        sups.append(sup_gen_x)
+        unsups.append(unsup_gen_x)
+    all_seqs = [actuals, sups, unsups]
+    with open("generations.json",'w') as dumpfile:
+        json.dump(all_seqs, dumpfile)
 
 if __name__ == '__main__':
     test_sequence_definition()
