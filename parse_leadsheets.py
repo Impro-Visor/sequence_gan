@@ -10,10 +10,10 @@ category = "intervalexpert_" if interval_or_chord else "chordexpert_"
 parsedir = "./parsed_ii-V-I_leadsheets/" + category
 cdir = parsedir + "chords.json"
 mdir = parsedir + 'melodies.json'
-susdir = parsedir + 'sus.json'
 posdir = parsedir + 'pos.json'
 ckeydir = parsedir + "chordkeys.json"
 namedir = parsedir + 'names.json'
+outputDirList = [cdir,mdir,posdir,ckeydir,namedir]
 
 MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
@@ -29,7 +29,7 @@ def parseLeadsheets(ldir,verbose=False):
     keyerror_count = 0
     clist =[]
     mlist =[]
-    suslist = []
+    poslist = []
     ckeylist = []
     namelist = []
     if not ldir.endswith("/"):
@@ -39,25 +39,28 @@ def parseLeadsheets(ldir,verbose=False):
         try:
             c,m=leadsheet.parse_leadsheet(fdir)
             mseq = []
-            susseq = []
+            pseq = []
             cseq = []
             index_count = 0
             for note in m:
                 cseq.append(c[index_count][0]) # get chord key for the slot
                 if note[0] != None:
-                    assert note[0] >= MIDI_MIN
-                nval = note[0] if note[0] != None else MIDI_MAX+1
-                mseq.append(nval-MIDI_MIN)
-                susseq.append(0) # attack new note
+                    assert note[0] >= MIDI_MIN 
+                restVal = MIDI_MAX+1
+                susVal = MIDI_MAX+2-MIDI_MIN
+                isRest = note[0] == None
+                nval = restVal if isRest else note[0]
+                actNoteVal = nval - MIDI_MIN # scale down to start at 0
+                pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX)
+                pval_high = 0.0 if isRest else 1-pval_low
+                pseq.append((pval_high,pval_low))
+                mseq.append(actNoteVal) # attack new note
                 for _ in range(note[1]-1):
-                    assert nval - MIDI_MIN >= 0
-                    assert nval < MIDI_MAX+2
-                    mseq.append(nval-MIDI_MIN)
-                    susseq.append(1) # sustain for the remaining duration
+                    mseq.append(susVal) # sustain for rest of duration
                 index_count+=1
             clist.append(c)
             mlist.append(mseq)
-            suslist.append(susseq)
+            poslist.append(pseq)
             ckeylist.append(cseq)
             namelist.append(filename)
         except KeyError:
@@ -71,17 +74,18 @@ def parseLeadsheets(ldir,verbose=False):
     if verbose:
         print("Num key errors: " + str(keyerror_count))
         print("Num assert errors: " + str(asserterror_count))
-    return clist, mlist,suslist,ckeylist,namelist
+    return [clist, mlist,poslist,ckeylist,namelist]
 
-def saveLeadsheets(clist,mlist,cdir,mdir):
+def saveLeadsheets(parsedLists,outputDirs):
     """
     Save parsed leadsheets.
     """
-    with open(cdir,'w') as coutfile:
-        json.dump(clist,coutfile)
-    with open(mdir,'w') as moutfile:
-        json.dump(mlist,moutfile)
+    for i in range(len(parsedLists)):
+        parsedList = parsedLists[i]
+        outputDir = outputDirs[i]
+        with open(outputDir,'w') as outfile:
+            json.dump(parsedList,outfile)
 
 if __name__ == '__main__':
-    clist,mlist,suslist,ckeylist,namelist = parseLeadsheets(ldir,verbose=True)
-    saveLeadsheets(clist,mlist,cdir,mdir)
+    parsedLists = parseLeadsheets(ldir,verbose=True)
+    saveLeadsheets(parsedLists=parsedLists,outputDirs=outputDirList)
