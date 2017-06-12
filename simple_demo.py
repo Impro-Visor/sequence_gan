@@ -11,9 +11,9 @@ import numpy as np
 import tensorflow as tf
 import random
 
-DPATH = "./parsed_ii-V-I_leadsheets/melodies.json"
+DPATH = "./parsed_ii-V-I_leadsheets/intervalexpert_melodies.json"
 
-NUM_EMB = 36 # Number of possible "characters" in the sequence. 35 note vals, 1 for rest, 1 for sustain,
+NUM_EMB = 37 # Number of possible "characters" in the sequence. Encoding: 0-34 for note vals, 35 for rest, 36 for sustain prev note.
 EMB_DIM = 10
 HIDDEN_DIM = 70
 SEQ_LENGTH = 96
