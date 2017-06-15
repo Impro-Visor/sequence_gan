@@ -17,6 +17,8 @@ outputDirList = [cdir,mdir,posdir,ckeydir,namedir]
 
 MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
+NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
+SEQ_LEN = 96
 
 def parseLeadsheets(ldir,verbose=False):
     """
@@ -27,6 +29,8 @@ def parseLeadsheets(ldir,verbose=False):
     """
     asserterror_count = 0
     keyerror_count = 0
+    bigrest_count = 0
+    numParsed = 0
     clist =[]
     mlist =[]
     poslist = []
@@ -42,22 +46,34 @@ def parseLeadsheets(ldir,verbose=False):
             pseq = []
             cseq = []
             index_count = 0
+            valid_leadsheet = True
+            slot = 0
             for note in m:
                 cseq.append(c[index_count][0]) # get chord key for the slot
                 if note[0] != None:
                     assert note[0] >= MIDI_MIN 
                 restVal = MIDI_MAX+1
-                susVal = MIDI_MAX+2-MIDI_MIN
                 isRest = note[0] == None
                 nval = restVal if isRest else note[0]
+                if isRest and note[1] > 12 or note[1] > 24:
+                    valid_leadsheet = False
+                    break
                 actNoteVal = nval - MIDI_MIN # scale down to start at 0
                 pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX)
                 pval_high = 0.0 if isRest else 1-pval_low
                 pseq.append((pval_high,pval_low))
-                mseq.append(actNoteVal) # attack new note
+                mseq.append((actNoteVal,0)) # attack new note
                 for _ in range(note[1]-1):
-                    mseq.append(susVal) # sustain for rest of duration
+                    mseq.append((actNoteVal,1)) # sustain for rest of duration
                 index_count+=1
+                slot += note[1]
+                if slot >= SEQ_LEN:
+                    break
+
+            if not valid_leadsheet:
+                bigrest_count += 1
+                continue
+            numParsed += 1
             clist.append(c)
             mlist.append(mseq)
             poslist.append(pseq)
@@ -74,6 +90,8 @@ def parseLeadsheets(ldir,verbose=False):
     if verbose:
         print("Num key errors: " + str(keyerror_count))
         print("Num assert errors: " + str(asserterror_count))
+        print("Num leadsheets with too big rests: " + str(bigrest_count))
+        print("Num leadsheets successfully parsed: " + str(numParsed))
     return [clist, mlist,poslist,ckeylist,namelist]
 
 def saveLeadsheets(parsedLists,outputDirs):
