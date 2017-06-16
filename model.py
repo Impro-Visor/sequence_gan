@@ -69,8 +69,8 @@ class RNN(object):
             self.g_embeddings_attack = tf.Variable(self.init_matrix([self.num_emb_attack,self.emb_dim_attack]))
             self.g_params.append(self.g_embeddings_attack)
 
-            self.g_recurrent_unit = self.create_recurrent_unit(self.emb_dim, self.hidden_dim, self.g_params)  # maps h_tm1 to h_t for generator
-            self.g_recurrent_unit_attack = self.create_recurrent_unit(self.emb_dim_attack, self.hidden_dim_attack, self.g_params)
+            self.g_recurrent_unit = self.create_recurrent_unit_pitch(self.emb_dim, self.hidden_dim, self.g_params)  # maps h_tm1 to h_t for generator
+            self.g_recurrent_unit_attack = self.create_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, self.g_params)
 
             self.g_output_unit = self.create_output_unit(self.num_emb, self.emb_dim, self.hidden_dim, self.g_params, self.g_embeddings)  # maps h_t to o_t (output token logits)
             self.g_output_unit_attack = self.create_output_unit(self.num_emb_attack, self.emb_dim_attack, self.hidden_dim_attack, self.g_params, self.g_embeddings_attack)
@@ -84,8 +84,8 @@ class RNN(object):
             self.d_embeddings_attack = tf.Variable(self.init_matrix([self.num_emb_attack, self.emb_dim_attack]))
             self.d_params.append(self.d_embeddings_attack)
 
-            self.d_recurrent_unit = self.create_recurrent_unit(self.emb_dim, self.hidden_dim, self.d_params)  # maps h_tm1 to h_t for discriminator
-            self.d_recurrent_unit_attack = self.create_recurrent_unit(self.emb_dim_attack, self.hidden_dim_attack, self.d_params)  # maps h_tm1 to h_t for discriminator
+            self.d_recurrent_unit = self.create_recurrent_unit_pitch(self.emb_dim, self.hidden_dim, self.d_params)  # maps h_tm1 to h_t for discriminator
+            self.d_recurrent_unit_attack = self.create_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, self.d_params)  # maps h_tm1 to h_t for discriminator
             self.d_classifier_unit = self.create_classifier_unit(self.d_params)  # maps h_t to class prediction logits
             self.d_h0 = tf.Variable(self.init_vector([self.hidden_dim]))
             self.d_h0_attack = tf.Variable(self.init_vector([self.hidden_dim_attack]))
@@ -432,7 +432,49 @@ class RNN(object):
 
 class GRU(RNN):
 
-    def create_recurrent_unit(self, emb_dim,hidden_dim, params):
+    def create_recurrent_unit_attack(self, emb_dim,hidden_dim, params):
+        W_rrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_zrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_hrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_rx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
+        W_zx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
+        W_hx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
+        U_rh = tf.Variable(self.init_matrix([hidden_dim, hidden_dim]))
+        U_zh = tf.Variable(self.init_matrix([hidden_dim, hidden_dim]))
+        U_hh = tf.Variable(self.init_matrix([hidden_dim, hidden_dim]))
+        params.extend([
+            W_rrepcount, W_zrepcount, W_hrepcount,
+            W_rbeat, W_zbeat, W_hbeat,
+            W_rx, W_zx, W_hx,
+            U_rh, U_zh, U_hh])
+
+        def unit(emb_dim,hidden_dim,x_t,beatVec, rep_count, h_tm1):
+
+            rep_count = tf.reshape(tf.cast(rep_count,tf.float32), [1,1])
+            x_t = tf.reshape(x_t, [emb_dim, 1])
+            beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
+            h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
+            r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
+                tf.matmul(W_rbeat, beatVec) + \
+                tf.matmul(W_rx, x_t) + \
+                tf.matmul(U_rh, h_tm1))
+            z = tf.sigmoid(tf.matmul(W_zrepcount, rep_count) + \
+                tf.matmul(W_zbeat, beatVec) + \
+                tf.matmul(W_zx, x_t) + \
+                tf.matmul(U_zh, h_tm1))
+            h_tilda = tf.tanh(tf.matmul(W_hrepcount, rep_count) + \
+                tf.matmul(W_hbeat, beatVec) + \
+                tf.matmul(W_hx, x_t) + \
+                tf.matmul(U_hh, r * h_tm1))
+            h_t = (1 - z) * h_tm1 + z * h_tilda
+            return tf.reshape(h_t, [hidden_dim])
+
+        return unit
+
+    def create_recurrent_unit_pitch(self, emb_dim,hidden_dim, params):
         W_rrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
