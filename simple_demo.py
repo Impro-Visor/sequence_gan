@@ -12,6 +12,7 @@ import tensorflow as tf
 import random
 
 DPATH = "./parsed_ii-V-I_leadsheets/intervalexpert_melodies.json"
+CPATH = "./parsed_ii-V-I_leadsheets/intervalexpert_chordkeys.json"
 
 NUM_EMB = 36 # Number of possible "characters" in the sequence. Encoding: 0-34 for note vals, 35 for rest.
 NUM_EMB_ATTACK = 2
@@ -20,7 +21,7 @@ EMB_DIM_ATTACK = 1
 HIDDEN_DIM = 300
 HIDDEN_DIM_ATTACK = 50
 SEQ_LENGTH = 96
-START_TOKEN = 5 # Middle C
+START_TOKEN = 35 # Middle C
 START_TOKEN_ATTACK = 0
 
 EPOCH_ITER = 100
@@ -45,7 +46,7 @@ def verify_sequence(seq):
     """
     return True
 
-def get_sequences(datapath):
+def get_sequences(datapath,chordpath):
     """
     Get the training set of sequences.
     """
@@ -54,16 +55,23 @@ def get_sequences(datapath):
         sequences = json.load(datafile)
         for i in range(len(sequences)):
             sequences[i] = sequences[i][:SEQ_LENGTH]
-    return sequences
+    chordseqs = []
+    with open(chordpath,'r') as chordfile:
+        chordseqs = json.load(chordfile)
+        for i in range(len(chordseqs)):
+            chordseqs[i] = chordseqs[i][:SEQ_LENGTH]
+    return sequences,chordseqs
 
-def get_random_sequence(sequences):
+def get_random_sequence(sequences,chordseqs):
     """
     Get a random note sequence from training set.
     """
-    sequence = random.choice(sequences)
+    i = random.randint(0,len(sequences)-1)
+    sequence = sequences[i]
+    chords = chordseqs[i]
     notes = [x[0] for x in sequence]
     attacks = [x[1] for x in sequence]
-    return notes,attacks
+    return notes,attacks,chords
 
 
 def test_sequence_definition():
@@ -101,25 +109,33 @@ def main():
     curric_count = 0
     proportion_supervised = 1.0
     skipD = False
+    skipG = False
     startUnsup = False
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
+        melodyseqs,chordseqs = get_sequences(DPATH,CPATH)
         latest_g_loss,latest_d_loss,actual_seq, actual_seq_attack, sup_gen_x, sup_gen_x_attack, unsup_gen_x, unsup_gen_x_attack = train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
-            sequences=get_sequences(DPATH),
-            verify_sequence=None,skipDiscriminator = skipD)
+            sequences=melodyseqs,chordseqs=chordseqs,
+            verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG)
         actuals.append([actual_seq,actual_seq_attack])
         sups.append([sup_gen_x,sup_gen_x_attack])
         unsups.append([unsup_gen_x,unsup_gen_x_attack])
-        if latest_d_loss != None and latest_d_loss < 0.9:
+        if not startUnsup and latest_d_loss != None and latest_d_loss < 0.9:
+            print('###### FREEZING DISCRIMINATOR')
             skipD = True
         if latest_g_loss != None and latest_g_loss < 2:
             startUnsup = True
         if startUnsup:
+            skipG = False
             skipD = False
+            if latest_d_loss != None and latest_d_loss > 90.7:
+                print('###### FREEZING GENERATOR')
+                skipG = True
+                continue
             curric_count+=1
             proportion_supervised = max(SUP_BASELINE, 0.3 - CURRICULUM_RATE * curric_count)
 

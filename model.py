@@ -97,6 +97,7 @@ class RNN(object):
         self.x = tf.placeholder(tf.int32, shape=[self.sequence_length])  # sequence of indices of true notes, not including start token
         self.x_attack = tf.placeholder(tf.int32, shape=[self.sequence_length])  # sequence of indices of true attacks, not including start token        
         self.samples = tf.placeholder(tf.float32, shape=[self.sequence_length])  # random samples from [0, 1]
+        self.randChords = tf.placeholder(tf.int32, shape=[self.sequence_length]) # sequence of chord keys
 
         # generator on initial randomness
         gen_o = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
@@ -117,9 +118,10 @@ class RNN(object):
             x_t,a_t, h_tm1, h_tm1_attack,
             gen_o, gen_x, gen_o_attack, gen_x_attack):
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
-            beatVec = tf.map_fn(lambda i : tf.cast(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32)),tf.float32), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             sample = samples.read(i)
 
+            # Feed inputs to GRU
             h_t_attack = self.g_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, a_t, beatVec, a_count, h_tm1_attack)
             oa_t = self.g_output_unit_attack(self.g_embeddings_attack, self.num_emb_attack, self.hidden_dim_attack, h_t_attack)
             oa_cumsum = _cumsum(oa_t, self.num_emb_attack)
@@ -140,8 +142,8 @@ class RNN(object):
             gen_x_attack = gen_x_attack.write(i, next_token_attack)  # indices, not embeddings
 
             return i + 1, \
-                tf.multiply(a_count,tf.cast(tf.equal(prev_a,next_token_attack),tf.int32))+1,next_token_attack, \
-                tf.multiply(rep_count,tf.cast(tf.equal(prev_token,next_token),tf.int32))+1,next_token, \
+                tf.multiply(a_count,tf.to_int32(tf.equal(1,next_token_attack)))+1,next_token_attack, \
+                tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                 x_tp1, a_tp1, h_t, h_t_attack,\
                 gen_o, gen_x,gen_o_attack,gen_x_attack
 
@@ -192,7 +194,7 @@ class RNN(object):
             rep_count, prev_token, notes, 
             inputs, inputs_attack, h_tm1, h_tm1_attack, pred):
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
-            beatVec = tf.map_fn(lambda i : tf.cast(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32)),tf.float32), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             x_t = inputs.read(i)
             next_token = notes[i]
             a_t = inputs_attack.read(i)
@@ -202,8 +204,8 @@ class RNN(object):
             y_t = self.d_classifier_unit(h_t,h_t_attack)
             pred = pred.write(i, y_t)
             return i + 1, \
-                tf.multiply(a_count,tf.cast(tf.equal(prev_a,next_a),tf.int32))+1, next_a,attacks,\
-                tf.multiply(rep_count,tf.cast(tf.equal(prev_token,next_token),tf.int32))+1, next_token,notes,\
+                tf.multiply(a_count,tf.to_int32(tf.equal(1,next_a)))+1, next_a,attacks,\
+                tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_attack, h_t,h_t_attack, pred
 
         _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
@@ -256,7 +258,7 @@ class RNN(object):
             x_t, a_t, h_tm1, h_tm1_attack,
             g_predictions, g_predictions_attack):
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
-            beatVec = tf.map_fn(lambda i : tf.cast(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32)),tf.float32), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1)
             h_t_attack = self.g_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, a_t, beatVec, a_count, h_tm1_attack)
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
@@ -269,8 +271,8 @@ class RNN(object):
             next_a = self.x_attack[i]
             next_token = self.x[i]
             return i + 1, \
-                tf.multiply(a_count,tf.cast(tf.equal(prev_a,next_a),tf.int32))+1, next_a,\
-                tf.multiply(rep_count,tf.cast(tf.equal(prev_token,next_token),tf.int32))+1, next_token,\
+                tf.multiply(a_count,tf.to_int32(tf.equal(1,next_a)))+1, next_a,\
+                tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,\
                 x_tp1, a_tp1, h_t, h_t_attack,\
                 g_predictions, g_predictions_attack
 
@@ -352,7 +354,7 @@ class RNN(object):
                            self.samples: np.random.random(self.sequence_length)})
         return outputs[0]
 
-    def train_g_step(self, session):
+    def train_g_step(self, session,chords):
         outputs = session.run(
                 [self.g_updates, self.reward_updates, self.g_loss,
                  self.expected_reward, self.gen_x, self.gen_x_attack],
@@ -361,7 +363,7 @@ class RNN(object):
                            self.samples: np.random.random(self.sequence_length)})
         return outputs
 
-    def train_d_gen_step(self, session):
+    def train_d_gen_step(self, session,chords):
         outputs = session.run(
                 [self.d_gen_updates, self.d_gen_loss],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
@@ -369,12 +371,12 @@ class RNN(object):
                            self.samples: np.random.random(self.sequence_length)})
         return outputs
 
-    def train_d_real_step(self, session, x, x_attack):
+    def train_d_real_step(self, session, x, x_attack,chords):
         outputs = session.run([self.d_real_updates, self.d_real_loss],
                               feed_dict={self.x: x, self.x_attack: x_attack})
         return outputs
 
-    def pretrain_step(self, session, x, x_attack):
+    def pretrain_step(self, session, x, x_attack,chords):
         outputs = session.run([self.pretrain_updates, self.pretrain_loss, self.g_predictions, self.g_predictions_attack],
                               feed_dict={self.x: x, self.x_attack: x_attack,
                                          self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
@@ -453,7 +455,7 @@ class GRU(RNN):
 
         def unit(emb_dim,hidden_dim,x_t,beatVec, rep_count, h_tm1):
 
-            rep_count = tf.reshape(tf.cast(rep_count,tf.float32), [1,1])
+            rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
             beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
@@ -495,7 +497,7 @@ class GRU(RNN):
 
         def unit(emb_dim,hidden_dim,x_t,beatVec, rep_count, h_tm1):
 
-            rep_count = tf.reshape(tf.cast(rep_count,tf.float32), [1,1])
+            rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
             beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
