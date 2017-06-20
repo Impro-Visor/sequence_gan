@@ -23,6 +23,8 @@ HIDDEN_DIM_ATTACK = 50
 SEQ_LENGTH = 96
 START_TOKEN = 35 # Middle C
 START_TOKEN_ATTACK = 0
+START_TOKEN_POS_LOW = 0
+START_TOKEN_POS_HIGH = 0
 
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
@@ -36,7 +38,7 @@ SEED = 88
 def get_trainable_model():
     return model.GRU(
         NUM_EMB, NUM_EMB_ATTACK, EMB_DIM, EMB_DIM_ATTACK, HIDDEN_DIM, HIDDEN_DIM_ATTACK,
-        SEQ_LENGTH, START_TOKEN, START_TOKEN_ATTACK,
+        SEQ_LENGTH, START_TOKEN, START_TOKEN_ATTACK, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
         learning_rate=LEARNING_RATE)
 
 
@@ -60,18 +62,25 @@ def get_sequences(datapath,chordpath):
         chordseqs = json.load(chordfile)
         for i in range(len(chordseqs)):
             chordseqs[i] = chordseqs[i][:SEQ_LENGTH]
-    return sequences,chordseqs
+    posseqs = []
+    with open(pospath, 'r') as posfile:
+        posseqs = json.load(posfile)
+        for i in range(len(posseqs)):
+            posseqs[i] = posseqs[i][:SEQ_LENGTH]
 
-def get_random_sequence(sequences,chordseqs):
+    return sequences,chordseqs,posseqs
+
+def get_random_sequence(sequences,chordseqs,posseqs):
     """
     Get a random note sequence from training set.
     """
     i = random.randint(0,len(sequences)-1)
     sequence = sequences[i]
     chords = chordseqs[i]
+    posseq = posseqs[i]
     notes = [x[0] for x in sequence]
     attacks = [x[1] for x in sequence]
-    return notes,attacks,chords
+    return notes,attacks,chords,posseq
 
 
 def test_sequence_definition():
@@ -113,13 +122,13 @@ def main():
     startUnsup = False
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
-        melodyseqs,chordseqs = get_sequences(DPATH,CPATH)
+        melodyseqs,chordseqs,posseqs = get_sequences(DPATH,CPATH)
         latest_g_loss,latest_d_loss,actual_seq, actual_seq_attack, sup_gen_x, sup_gen_x_attack, unsup_gen_x, unsup_gen_x_attack = train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
-            sequences=melodyseqs,chordseqs=chordseqs,
+            sequences=melodyseqs,chordseqs=chordseqs,posseqs=posseqs,
             verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG)
         actuals.append([actual_seq,actual_seq_attack])
         sups.append([sup_gen_x,sup_gen_x_attack])

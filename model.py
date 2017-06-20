@@ -38,7 +38,7 @@ EIGHTH_TRIPLET = 2
 class RNN(object):
 
     def __init__(self, num_emb, num_emb_attack, emb_dim, emb_dim_attack, hidden_dim, hidden_dim_attack,
-                 sequence_length, start_token, start_token_attack,
+                 sequence_length, start_token, start_token_attack, start_token_pos_low, start_token_pos_high,
                  learning_rate=0.01, reward_gamma=0.9):
         self.num_emb = num_emb
         self.num_emb_attack = num_emb_attack
@@ -98,6 +98,8 @@ class RNN(object):
         self.x_attack = tf.placeholder(tf.int32, shape=[self.sequence_length])  # sequence of indices of true attacks, not including start token        
         self.samples = tf.placeholder(tf.float32, shape=[self.sequence_length])  # random samples from [0, 1]
         self.randChords = tf.placeholder(tf.int32, shape=[self.sequence_length]) # sequence of chord keys
+        self.low = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of low pos ratios
+        self.high = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of high pos ratios
 
         # generator on initial randomness
         gen_o = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
@@ -346,12 +348,13 @@ class RNN(object):
         self.pretrain_grad = tf.gradients(self.pretrain_loss, self.g_params)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
 
-    def generate(self, session):
+    def generate(self, session,chords):
         outputs = session.run(
                 [self.gen_x, self.gen_x_attack],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
-                           self.samples: np.random.random(self.sequence_length)})
+                           self.samples: np.random.random(self.sequence_length),
+                           self.randChords: chords})
         return outputs[0]
 
     def train_g_step(self, session,chords):
@@ -360,7 +363,8 @@ class RNN(object):
                  self.expected_reward, self.gen_x, self.gen_x_attack],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
-                           self.samples: np.random.random(self.sequence_length)})
+                           self.samples: np.random.random(self.sequence_length),
+                           self.randChords: chords})
         return outputs
 
     def train_d_gen_step(self, session,chords):
@@ -368,19 +372,22 @@ class RNN(object):
                 [self.d_gen_updates, self.d_gen_loss],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
-                           self.samples: np.random.random(self.sequence_length)})
+                           self.samples: np.random.random(self.sequence_length),
+                           self.randChords: chords})
         return outputs
 
-    def train_d_real_step(self, session, x, x_attack,chords):
+    def train_d_real_step(self, session, x, x_attack,chords,low,high):
         outputs = session.run([self.d_real_updates, self.d_real_loss],
-                              feed_dict={self.x: x, self.x_attack: x_attack})
+                              feed_dict={self.x: x, self.x_attack: x_attack,
+                                         self.randChords:chords, self.low:low, self.high,high})
         return outputs
 
-    def pretrain_step(self, session, x, x_attack,chords):
+    def pretrain_step(self, session, x, x_attack,chords,low,high): # TODOJUMPPOINT
         outputs = session.run([self.pretrain_updates, self.pretrain_loss, self.g_predictions, self.g_predictions_attack],
                               feed_dict={self.x: x, self.x_attack: x_attack,
                                          self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
-                                         self.h0: np.random.normal(size=self.hidden_dim)})
+                                         self.h0: np.random.normal(size=self.hidden_dim),
+                                         self.randChords:chords, self.low:low, self.high,high})
         return outputs
 
     def init_matrix(self, shape):

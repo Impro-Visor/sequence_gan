@@ -8,7 +8,7 @@ import random
 
 def train_epoch(sess, trainable_model, num_iter,
                 proportion_supervised, g_steps, d_steps,
-                next_sequence, sequences, chordseqs, verify_sequence=None,
+                next_sequence, sequences, chordseqs,posseqs, verify_sequence=None,
                 words=None,
                 proportion_generated=0.5,
                 skipDiscriminator=False,
@@ -49,10 +49,12 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipGenerator:
             for _ in range(g_steps):
                 if random.random() < proportion_supervised:
-                    seq, seq_attack,chords = next_sequence(sequences,chordseqs)
+                    seq, seq_attack,chords,posseq = next_sequence(sequences,chordseqs,posseqs)
+                    low = [x[0] for x in posseq]
+                    high = [x[1] for x in posseq]
                     actual_seq = seq
                     actual_seq_attack = seq_attack
-                    _, g_loss, g_pred, g_pred_attack = trainable_model.pretrain_step(sess, seq, seq_attack,chords)
+                    _, g_loss, g_pred, g_pred_attack = trainable_model.pretrain_step(sess, seq, seq_attack,chords,low,high)
                     supervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
                         try:
@@ -81,8 +83,10 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipDiscriminator:
             for _ in range(d_steps):
                 if random.random() < proportion_generated:
-                    seq,seq_attack,chords = next_sequence(sequences,chordseqs)
-                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_attack,chords)
+                    seq,seq_attack,chords,posseq = next_sequence(sequences,chordseqs,posseqs)
+                    low = [x[0] for x in posseq]
+                    high = [x[1] for x in posseq]
+                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_attack,chords,low,high)
                 else:
                     chords = random.choice(chordseqs)
                     _, d_loss = trainable_model.train_d_gen_step(sess,chords)
