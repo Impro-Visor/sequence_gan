@@ -34,6 +34,8 @@ SIXTEENTH_NOTE = 3
 HALF_TRIPLET = 8
 QUARTER_TRIPLET = 4
 EIGHTH_TRIPLET = 2
+MIDI_MIN = 55 # lowest note value found in trainingset
+MIDI_MAX = 89 # highest note value found in trainingset
 
 class RNN(object):
 
@@ -97,9 +99,10 @@ class RNN(object):
         self.x = tf.placeholder(tf.int32, shape=[self.sequence_length])  # sequence of indices of true notes, not including start token
         self.x_attack = tf.placeholder(tf.int32, shape=[self.sequence_length])  # sequence of indices of true attacks, not including start token        
         self.samples = tf.placeholder(tf.float32, shape=[self.sequence_length])  # random samples from [0, 1]
-        self.randChords = tf.placeholder(tf.int32, shape=[self.sequence_length]) # sequence of chord keys
-        self.low = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of low pos ratios
-        self.high = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of high pos ratios
+        self.chordKeys = tf.placeholder(tf.int32, shape=[self.sequence_length]) # sequence of chord keys
+        self.chordNotes = tf.placeholder(tf.int32, shape=[self.sequence_length, 12]) # sequence of vectors of notes in the chord
+        self.lows = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of low pos ratios
+        self.highs = tf.placeholder(tf.float32, shape=[self.sequence_length]) # sequence of high pos ratios
 
         # generator on initial randomness
         gen_o = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
@@ -110,15 +113,20 @@ class RNN(object):
                                              dynamic_size=False, infer_shape=True)
         gen_x_attack = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length,
                                              dynamic_size=False, infer_shape=True)
+        gen_high = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
+                                             dynamic_size=False, infer_shape=True)
+        gen_low = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
+                                             dynamic_size=False, infer_shape=True)
 
         samples = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
         samples = samples.unstack(self.samples)
-        def _g_recurrence(i, 
+        def _g_recurrence(i,
+            chordkey_vec, chordnote_vec, low, high,
             a_count, prev_a,
             rep_count, prev_token, 
             x_t,a_t, h_tm1, h_tm1_attack,
-            gen_o, gen_x, gen_o_attack, gen_x_attack):
+            gen_o, gen_x, gen_o_attack, gen_x_attack, gen_low, gen_high):
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
             beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             sample = samples.read(i)
@@ -130,10 +138,16 @@ class RNN(object):
             next_token_attack = tf.to_int32(tf.reduce_min(tf.where(sample < oa_cumsum)))
 
             doingSustain = tf.equal(tf.constant(1,dtype=tf.int32), next_token_attack)
-            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1)
+            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
             next_token = tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum)))   # sample
+
+            # Calculate low and high for next note
+            newLow = tf.cond(tf.equal(next_token,tf.constant(35,dtype=tf.int32)), lambda: tf.constant(0.0,dtype=tf.float32), lambda: tf.to_float(next_token)/tf.constant((MIDI_MAX- MIDI_MIN),dtype=tf.float32))
+            newHigh = tf.cond(tf.equal(next_token,tf.constant(35,dtype=tf.int32)), lambda: tf.constant(0.0,dtype=tf.float32), lambda: tf.constant(1.0,dtype=tf.float32)-newLow)
+            gen_low = gen_low.write(i, newLow)
+            gen_high = gen_high.write(i, newHigh)
 
             x_tp1 = tf.gather(self.g_embeddings, next_token)
             gen_o = gen_o.write(i, tf.gather(o_t, next_token))  # we only need the sampled token's probability
@@ -144,19 +158,21 @@ class RNN(object):
             gen_x_attack = gen_x_attack.write(i, next_token_attack)  # indices, not embeddings
 
             return i + 1, \
+                self.chordKeys[(i+1) % self.sequence_length],self.chordNotes[(i+1) % self.sequence_length],newLow,newHigh,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(1,next_token_attack)))+1,next_token_attack, \
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                 x_tp1, a_tp1, h_t, h_t_attack,\
-                gen_o, gen_x,gen_o_attack,gen_x_attack
+                gen_o, gen_x,gen_o_attack,gen_x_attack, gen_low, gen_high
 
-        _, _, _, _, _, _, _, _, _, self.gen_o, self.gen_x, self.gen_o_attack, self.gen_x_attack = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, self.gen_o, self.gen_x, self.gen_o_attack, self.gen_x_attack, self.gen_low, self.gen_high = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
+                self.chordKeys[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
                 tf.constant(0,dtype=tf.int32),self.start_token_attack,
                 tf.constant(0,dtype=tf.int32),self.start_token,
                 tf.gather(self.g_embeddings, self.start_token),tf.gather(self.g_embeddings_attack, self.start_token_attack),self.h0,self.h0_attack, 
-                gen_o, gen_x,gen_o_attack,gen_x_attack))
+                gen_o, gen_x,gen_o_attack,gen_x_attack,gen_low, gen_high))
 
         # discriminator on generated and real data: note vars
         d_gen_predictions = tensor_array_ops.TensorArray(
@@ -192,28 +208,33 @@ class RNN(object):
         # discriminator recurrence
 
         def _d_recurrence(i,
+            chordkey_vec, chordnote_vec, inputs_lows, inputs_highs,           
             a_count, prev_a, attacks,
             rep_count, prev_token, notes, 
             inputs, inputs_attack, h_tm1, h_tm1_attack, pred):
+            low = inputs_lows[i]
+            high = inputs_highs[i]
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
             beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             x_t = inputs.read(i)
             next_token = notes[i]
             a_t = inputs_attack.read(i)
             next_a = attacks[i]
-            h_t = self.d_recurrent_unit(self.emb_dim, self.hidden_dim, x_t,beatVec, rep_count, h_tm1)
+            h_t = self.d_recurrent_unit(self.emb_dim, self.hidden_dim, x_t,beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
             h_t_attack = self.d_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, a_t,beatVec, a_count, h_tm1_attack)
             y_t = self.d_classifier_unit(h_t,h_t_attack)
             pred = pred.write(i, y_t)
             return i + 1, \
+                self.chordKeys[(i+1) % self.sequence_length],self.chordNotes[(i+1) % self.sequence_length],inputs_lows,inputs_highs,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(1,next_a)))+1, next_a,attacks,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_attack, h_t,h_t_attack, pred
 
-        _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15: i < self.sequence_length,
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
+                self.chordKeys[0],self.chordNotes[0],self.gen_low.stack(),self.gen_high.stack(),
                 tf.constant(0,dtype=tf.int32), self.start_token_attack, self.gen_x_attack,
                 tf.constant(0,dtype=tf.int32), self.start_token, self.gen_x,
                 ta_emb_gen_x, ta_emb_gen_x_attack,self.d_h0,self.d_h0_attack, d_gen_predictions))
@@ -221,10 +242,11 @@ class RNN(object):
                 self.d_gen_predictions.stack(),
                 [self.sequence_length])
 
-        _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15: i < self.sequence_length,
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
+                self.chordKeys[0],self.chordNotes[0],self.lows,self.highs,
                 tf.constant(0,dtype=tf.int32),self.start_token_attack,self.x_attack,
                 tf.constant(0,dtype=tf.int32),self.start_token,self.x,
                 ta_emb_real_x, ta_emb_real_x_attack,self.d_h0,self.d_h0_attack, d_real_predictions))
@@ -255,13 +277,14 @@ class RNN(object):
         # pretrain recurrence
 
         def _pretrain_recurrence(i, 
+            chordkey_vec, chordnote_vec, low, high,      
             a_count,prev_a,
             rep_count, prev_token, 
             x_t, a_t, h_tm1, h_tm1_attack,
             g_predictions, g_predictions_attack):
             beat = tf.mod(i,numBeatsInMeasure)+tf.constant(1,dtype=tf.int32)
             beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
-            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1)
+            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
             h_t_attack = self.g_recurrent_unit_attack(self.emb_dim_attack, self.hidden_dim_attack, a_t, beatVec, a_count, h_tm1_attack)
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             oa_t = self.g_output_unit_attack(self.g_embeddings_attack, self.num_emb_attack,self.hidden_dim_attack, h_t_attack)
@@ -273,15 +296,17 @@ class RNN(object):
             next_a = self.x_attack[i]
             next_token = self.x[i]
             return i + 1, \
+                self.chordKeys[(i+1) % self.sequence_length],self.chordNotes[(i+1) % self.sequence_length],self.lows[i],self.highs[i],\
                 tf.multiply(a_count,tf.to_int32(tf.equal(1,next_a)))+1, next_a,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,\
                 x_tp1, a_tp1, h_t, h_t_attack,\
                 g_predictions, g_predictions_attack
 
-        _, _, _, _, _, _, _, _, _, self.g_predictions, self.g_predictions_attack = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, self.g_predictions, self.g_predictions_attack = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14: i < self.sequence_length,
             body=_pretrain_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),
+                self.chordKeys[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
                 tf.constant(0,dtype=tf.int32),self.start_token_attack,
                 tf.constant(0,dtype=tf.int32),self.start_token,
                 tf.gather(self.g_embeddings, self.start_token), tf.gather(self.g_embeddings_attack,self.start_token_attack),self.h0, self.h0_attack,
@@ -348,46 +373,46 @@ class RNN(object):
         self.pretrain_grad = tf.gradients(self.pretrain_loss, self.g_params)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
 
-    def generate(self, session,chords):
+    def generate(self, session,chordkeys,chordnotes):
         outputs = session.run(
                 [self.gen_x, self.gen_x_attack],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
                            self.samples: np.random.random(self.sequence_length),
-                           self.randChords: chords})
+                           self.chordKeys: chordkeys, self.chordNotes: chordnotes})
         return outputs[0]
 
-    def train_g_step(self, session,chords):
+    def train_g_step(self, session,chordkeys,chordnotes):
         outputs = session.run(
                 [self.g_updates, self.reward_updates, self.g_loss,
                  self.expected_reward, self.gen_x, self.gen_x_attack],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
                            self.samples: np.random.random(self.sequence_length),
-                           self.randChords: chords})
+                           self.chordKeys: chordkeys, self.chordNotes: chordnotes})
         return outputs
 
-    def train_d_gen_step(self, session,chords):
+    def train_d_gen_step(self, session,chordkeys,chordnotes):
         outputs = session.run(
                 [self.d_gen_updates, self.d_gen_loss],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
                            self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
                            self.samples: np.random.random(self.sequence_length),
-                           self.randChords: chords})
+                           self.chordKeys: chordkeys, self.chordNotes: chordnotes})
         return outputs
 
-    def train_d_real_step(self, session, x, x_attack,chords,low,high):
+    def train_d_real_step(self, session, x, x_attack,chordkeys,chordnotes,low,high):
         outputs = session.run([self.d_real_updates, self.d_real_loss],
                               feed_dict={self.x: x, self.x_attack: x_attack,
-                                         self.randChords:chords, self.low:low, self.high,high})
+                                         self.chordKeys:chordkeys,self.chordNotes:chordnotes, self.lows:low, self.highs:high})
         return outputs
 
-    def pretrain_step(self, session, x, x_attack,chords,low,high): # TODOJUMPPOINT
+    def pretrain_step(self, session, x, x_attack,chordkeys,chordnotes,low,high):
         outputs = session.run([self.pretrain_updates, self.pretrain_loss, self.g_predictions, self.g_predictions_attack],
                               feed_dict={self.x: x, self.x_attack: x_attack,
                                          self.h0_attack: np.random.normal(size=self.hidden_dim_attack),
                                          self.h0: np.random.normal(size=self.hidden_dim),
-                                         self.randChords:chords, self.low:low, self.high,high})
+                                         self.chordKeys:chordkeys,self.chordNotes:chordnotes, self.lows:low, self.highs:high})
         return outputs
 
     def init_matrix(self, shape):
@@ -484,6 +509,18 @@ class GRU(RNN):
         return unit
 
     def create_recurrent_unit_pitch(self, emb_dim,hidden_dim, params):
+        W_rlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_zlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_hlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_rhigh = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_zhigh = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_hhigh = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_rcnote = tf.Variable(self.init_matrix([hidden_dim, 12]))
+        W_zcnote = tf.Variable(self.init_matrix([hidden_dim, 12]))
+        W_hcnote = tf.Variable(self.init_matrix([hidden_dim, 12]))
+        W_rckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_zckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_hckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_rrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
@@ -497,26 +534,46 @@ class GRU(RNN):
         U_zh = tf.Variable(self.init_matrix([hidden_dim, hidden_dim]))
         U_hh = tf.Variable(self.init_matrix([hidden_dim, hidden_dim]))
         params.extend([
+            W_rlow, W_zlow, W_hlow,
+            W_rhigh, W_zhigh, W_hhigh,
+            W_rcnote, W_zcnote, W_hcnote,
+            W_rckey, W_zckey, W_hckey,
             W_rrepcount, W_zrepcount, W_hrepcount,
             W_rbeat, W_zbeat, W_hbeat,
             W_rx, W_zx, W_hx,
             U_rh, U_zh, U_hh])
 
-        def unit(emb_dim,hidden_dim,x_t,beatVec, rep_count, h_tm1):
+        def unit(emb_dim,hidden_dim,x_t,beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high):
 
+            high = tf.reshape(tf.to_float(high), [1,1])
+            low = tf.reshape(tf.to_float(low), [1,1])
+            chordnote_vec = tf.reshape(tf.to_float(chordnote_vec), [12,1])
+            chordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1,1])
             rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
             beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
+                tf.matmul(W_rckey,chordkey_vec) + \
+                tf.matmul(W_rcnote, chordnote_vec) + \
+                tf.matmul(W_rlow, low) + \
+                tf.matmul(W_rhigh, high) + \
                 tf.matmul(W_rbeat, beatVec) + \
                 tf.matmul(W_rx, x_t) + \
                 tf.matmul(U_rh, h_tm1))
             z = tf.sigmoid(tf.matmul(W_zrepcount, rep_count) + \
+                tf.matmul(W_zckey,chordkey_vec) + \
+                tf.matmul(W_zcnote, chordnote_vec) + \
+                tf.matmul(W_zlow, low) + \
+                tf.matmul(W_zhigh, high) + \
                 tf.matmul(W_zbeat, beatVec) + \
                 tf.matmul(W_zx, x_t) + \
                 tf.matmul(U_zh, h_tm1))
             h_tilda = tf.tanh(tf.matmul(W_hrepcount, rep_count) + \
+                tf.matmul(W_hckey,chordkey_vec) + \
+                tf.matmul(W_hcnote, chordnote_vec) + \
+                tf.matmul(W_hlow, low) + \
+                tf.matmul(W_hhigh, high) + \
                 tf.matmul(W_hbeat, beatVec) + \
                 tf.matmul(W_hx, x_t) + \
                 tf.matmul(U_hh, r * h_tm1))

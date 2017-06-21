@@ -8,11 +8,11 @@ import random
 
 def train_epoch(sess, trainable_model, num_iter,
                 proportion_supervised, g_steps, d_steps,
-                next_sequence, sequences, chordseqs,posseqs, verify_sequence=None,
+                next_sequence, sequences, chordseqs,lows,highs, verify_sequence=None,
                 words=None,
                 proportion_generated=0.5,
                 skipDiscriminator=False,
-                skipGenerator=False):
+                skipGenerator=False,note_adjust=0):
     """Perform training for model.
 
     sess: tensorflow session
@@ -49,12 +49,10 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipGenerator:
             for _ in range(g_steps):
                 if random.random() < proportion_supervised:
-                    seq, seq_attack,chords,posseq = next_sequence(sequences,chordseqs,posseqs)
-                    low = [x[0] for x in posseq]
-                    high = [x[1] for x in posseq]
+                    seq, seq_attack,chordkeys,chordnotes,low,high = next_sequence(sequences,chordseqs,lows,highs)
                     actual_seq = seq
                     actual_seq_attack = seq_attack
-                    _, g_loss, g_pred, g_pred_attack = trainable_model.pretrain_step(sess, seq, seq_attack,chords,low,high)
+                    _, g_loss, g_pred, g_pred_attack = trainable_model.pretrain_step(sess, seq, seq_attack,chordkeys,chordnotes,low,high)
                     supervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
                         try:
@@ -67,9 +65,9 @@ def train_epoch(sess, trainable_model, num_iter,
                         supervised_correct_generation.append(
                             verify_sequence(supervised_gen_x))
                 else:
-                    chords = random.choice(chordseqs)
+                    seq, seq_attack,chordkeys,chordnotes,low,high = next_sequence(sequences,chordseqs,lows,highs)
                     _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_attack = \
-                        trainable_model.train_g_step(sess,chords)
+                        trainable_model.train_g_step(sess,chordkeys,chordnotes)
                     expected_rewards.append(expected_reward)
                     unsupervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
@@ -83,13 +81,11 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipDiscriminator:
             for _ in range(d_steps):
                 if random.random() < proportion_generated:
-                    seq,seq_attack,chords,posseq = next_sequence(sequences,chordseqs,posseqs)
-                    low = [x[0] for x in posseq]
-                    high = [x[1] for x in posseq]
-                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_attack,chords,low,high)
+                    seq, seq_attack,chordkeys,chordnotes,low,high = next_sequence(sequences,chordseqs,lows,highs)
+                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_attack,chordkeys,chordnotes,low,high)
                 else:
-                    chords = random.choice(chordseqs)
-                    _, d_loss = trainable_model.train_d_gen_step(sess,chords)
+                    seq, seq_attack,chordkeys,chordnotes,low,high = next_sequence(sequences,chordseqs,lows,highs)
+                    _, d_loss = trainable_model.train_d_gen_step(sess,chordkeys,chordnotes)
                 d_losses.append(d_loss)
 
     print('epoch statistics:')
@@ -98,15 +94,15 @@ def train_epoch(sess, trainable_model, num_iter,
     if verify_sequence is not None:
         print('>>>> correct generations (supervised, unsupervised):', np.mean(supervised_correct_generation), np.mean(unsupervised_correct_generation))
     print('>>>> actual melody:')
-    actual_seq_print = None if actual_seq==None else [x-13 for x in actual_seq]
+    actual_seq_print = None if actual_seq==None else [x-note_adjust for x in actual_seq]
     print(actual_seq_print,)
     print(actual_seq_attack)
     print('>>>> sampled generations (supervised, unsupervised):',)
-    sup_gen_x = [words[x]-13 if words else x-13 for x in supervised_gen_x] if supervised_gen_x is not None else None
+    sup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in supervised_gen_x] if supervised_gen_x is not None else None
     sup_gen_x_attack = [words[x] if words else x for x in supervised_gen_x_attack] if supervised_gen_x_attack is not None else None
     print(sup_gen_x,)
     print(sup_gen_x_attack,)
-    unsup_gen_x = [words[x]-13 if words else x-13 for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
+    unsup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
     unsup_gen_x_attack = [words[x] if words else x for x in unsupervised_gen_x_attack] if unsupervised_gen_x_attack is not None else None
     print(unsup_gen_x,)
     print(unsup_gen_x_attack)

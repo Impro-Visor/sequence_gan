@@ -11,8 +11,9 @@ import numpy as np
 import tensorflow as tf
 import random
 
-DPATH = "./parsed_ii-V-I_leadsheets/intervalexpert_melodies.json"
-CPATH = "./parsed_ii-V-I_leadsheets/intervalexpert_chordkeys.json"
+DPATH = "./parsed_ii-V-I_leadsheets/pitchexpert_melodies.json"
+CPATH = "./parsed_ii-V-I_leadsheets/pitchexpert_chords.json"
+PPATH = "./parsed_ii-V-I_leadsheets/pitchexpert_pos.json"
 
 NUM_EMB = 36 # Number of possible "characters" in the sequence. Encoding: 0-34 for note vals, 35 for rest.
 NUM_EMB_ATTACK = 2
@@ -48,7 +49,7 @@ def verify_sequence(seq):
     """
     return True
 
-def get_sequences(datapath,chordpath):
+def get_sequences(datapath,chordpath,pospath):
     """
     Get the training set of sequences.
     """
@@ -62,25 +63,32 @@ def get_sequences(datapath,chordpath):
         chordseqs = json.load(chordfile)
         for i in range(len(chordseqs)):
             chordseqs[i] = chordseqs[i][:SEQ_LENGTH]
-    posseqs = []
+    lows = []
+    highs = []
     with open(pospath, 'r') as posfile:
         posseqs = json.load(posfile)
-        for i in range(len(posseqs)):
-            posseqs[i] = posseqs[i][:SEQ_LENGTH]
+        for posseq in posseqs:
+            low = [x[0] for x in posseq[:SEQ_LENGTH]]
+            high = [x[1] for x in posseq[:SEQ_LENGTH]]
+            lows.append(low)
+            highs.append(high)
 
-    return sequences,chordseqs,posseqs
+    return sequences,chordseqs,lows,highs
 
-def get_random_sequence(sequences,chordseqs,posseqs):
+def get_random_sequence(sequences,chordseqs,lows,highs):
     """
     Get a random note sequence from training set.
     """
     i = random.randint(0,len(sequences)-1)
     sequence = sequences[i]
-    chords = chordseqs[i]
-    posseq = posseqs[i]
+    chordseq = chordseqs[i]
+    chordkeys = [x[0] for x in chordseq]
+    chordnotes = [x[1] for x in chordseq]
+    low = lows[i]
+    high = highs[i]
     notes = [x[0] for x in sequence]
     attacks = [x[1] for x in sequence]
-    return notes,attacks,chords,posseq
+    return notes,attacks,chordkeys,chordnotes,low,high
 
 
 def test_sequence_definition():
@@ -122,13 +130,13 @@ def main():
     startUnsup = False
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
-        melodyseqs,chordseqs,posseqs = get_sequences(DPATH,CPATH)
+        melodyseqs,chordseqs,lows,highs = get_sequences(DPATH,CPATH,PPATH)
         latest_g_loss,latest_d_loss,actual_seq, actual_seq_attack, sup_gen_x, sup_gen_x_attack, unsup_gen_x, unsup_gen_x_attack = train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
-            sequences=melodyseqs,chordseqs=chordseqs,posseqs=posseqs,
+            sequences=melodyseqs,chordseqs=chordseqs,lows=lows,highs=highs,
             verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG)
         actuals.append([actual_seq,actual_seq_attack])
         sups.append([sup_gen_x,sup_gen_x_attack])

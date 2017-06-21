@@ -2,11 +2,16 @@ import leadsheet
 import os
 import json
 
+PURE_PITCH = True
+PITCH_MIDI = 0
+PITCH_INTERVAL = 1
+PITCH_CHORD = 2
 INTERVAL = True
 CHORD = False
 interval_or_chord = INTERVAL
+PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 ldir = "./ii-V-I_leadsheets/"
-category = "intervalexpert_" if interval_or_chord else "chordexpert_"
+category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 parsedir = "./parsed_ii-V-I_leadsheets/" + category
 cdir = parsedir + "chords.json"
 mdir = parsedir + 'melodies.json'
@@ -23,11 +28,6 @@ SEQ_LEN = 96
 MIN_INTERV = -13
 MAX_INTERV = 14
 
-PURE_PITCH = False
-PITCH_MIDI = 0
-PITCH_INTERVAL = 1
-PITCH_CHORD = 2
-PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord else PITCH_CHORD)
 
 def parseLeadsheets(ldir,verbose=False):
     """
@@ -76,7 +76,7 @@ def parseLeadsheets(ldir,verbose=False):
                         valid_leadsheet = False
                         break
                     actNoteVal = nval - MIDI_MIN # scale down to start at 0
-                    pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX)
+                    pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((actNoteVal,0)) # attack new note
@@ -104,7 +104,7 @@ def parseLeadsheets(ldir,verbose=False):
                         valid_leadsheet = False
                         break
                     midival = MIDI_MAX+1 if isRest else note[0]
-                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX)
+                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((nval,0))
@@ -127,7 +127,7 @@ def parseLeadsheets(ldir,verbose=False):
                         valid_leadsheet = False
                         break
                     midival = MIDI_MAX+1 if isRest else note[0]
-                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX)
+                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((nval,0))
