@@ -67,6 +67,7 @@ def parseLeadsheets(ldir,verbose=False):
             if PITCH_REP == PITCH_MIDI:
                 for note in m:
                     cseq.append(c[index_count][0]) # get chord key for the slot
+                    index_count+=1
                     if note[0] != None:
                         assert note[0] >= MIDI_MIN 
                     restVal = MIDI_MAX+1
@@ -80,13 +81,12 @@ def parseLeadsheets(ldir,verbose=False):
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((actNoteVal,0)) # attack new note
-                    index_count+=1
                     for _ in range(note[1]-1):
                         pseq.append((pval_high,pval_low))
                         mseq.append((actNoteVal,1)) # sustain for rest of duration
+                        cseq.append(c[index_count][0])
                         index_count+=1
-                    slot += note[1]
-                    if slot >= SEQ_LEN:
+                    if index_count >= SEQ_LEN:
                         break
             elif PITCH_REP == PITCH_INTERVAL:
                 isStart = True
@@ -95,6 +95,7 @@ def parseLeadsheets(ldir,verbose=False):
                         prevVal = note[0]-1
                         isStart = False
                     cseq.append(c[index_count][0]) # get chord key for the slot
+                    index_count+=1
                     restVal = MAX_INTERV+1
                     isRest = note[0] == None
                     nval = restVal if isRest else note[0]-prevVal
@@ -108,18 +109,18 @@ def parseLeadsheets(ldir,verbose=False):
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((nval,0))
-                    index_count+=1
                     for _ in range(note[1]-1):
                         pseq.append((pval_high,pval_low))
                         mseq.append((0- MIN_INTERV,1)) #sustain
+                        cseq.append(c[index_count][0])
                         index_count+=1
-                    slot += note[1]
-                    if slot >= SEQ_LEN:
+                    if index_count >= SEQ_LEN:
                         break
             elif PITCH_REP == PITCH_CHORD:
                 for note in m:
                     ckey = c[index_count][0]
                     cseq.append(ckey) # get chord key for the slot
+                    index_count+=1
                     restVal = 12 # pitches go 0-11
                     isRest = note[0] == None
                     nval = restVal if isRest else (note[0]-ckey) % 12
@@ -131,13 +132,12 @@ def parseLeadsheets(ldir,verbose=False):
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
                     mseq.append((nval,0))
-                    index_count+=1
                     for _ in range(note[1]-1):
                         pseq.append((pval_high,pval_low))
                         mseq.append((nval,1))
+                        cseq.append(c[index_count][0])
                         index_count+=1
-                    slot += note[1]
-                    if slot >= SEQ_LEN:
+                    if index_count >= SEQ_LEN:
                         break
 
             if not valid_leadsheet:
