@@ -2,6 +2,8 @@ import leadsheet
 import os
 import json
 
+
+USING_TRANSCRIPTIONS = False
 BITS = True
 ONE_HOT = False
 bits_or_onehot = ONE_HOT
@@ -14,21 +16,30 @@ INTERVAL = True
 CHORD = False
 interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
-ldir = "./ii-V-I_leadsheets/"
+parsename = "ii-V-I_leadsheets"
+if USING_TRANSCRIPTIONS:
+    parsename = "transcriptions"
+ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
-parsedir = "./parsed_ii-V-I_leadsheets_dur/" + category + encoding
+parsedir = "./parsed_"+parsename+"_dur/" + category + encoding
 cdir = parsedir + "chords.json"
 mdir = parsedir + 'melodies.json'
 posdir = parsedir + 'pos.json'
 ckeydir = parsedir + "chordkeys.json"
 namedir = parsedir + 'names.json'
 ddir = parsedir + 'durs.json'
-outputDirList = [cdir,mdir,posdir,ckeydir,namedir,ddir]
+spdir = parsedir + 'startpitches.json'
+outputDirList = [cdir,mdir,posdir,ckeydir,namedir,ddir,spdir]
 
 MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
+if USING_TRANSCRIPTIONS:
+    MIDI_MIN = 44
+    MIDI_MAX = 106
+    NUM_NOTES = MIDI_MAX-MIDI_MIN+1
+
 SEQ_LEN = 96
 
 MIN_INTERV = -13
@@ -68,7 +79,6 @@ DURATION_MAPPING = {
     72: WHOLE_DOTTED,
     }
 
-
 def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
     """
     Parse a directory of leadsheets into a list of chords and melodies.
@@ -86,6 +96,7 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
     ckeylist = []
     namelist = []
     dlist = []
+    splist = []
     if not ldir.endswith("/"):
         ldir += "/"
     if PITCH_REP == PITCH_MIDI:
@@ -95,32 +106,44 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
     elif PITCH_REP == PITCH_CHORD:
         print("PITCH: CHORD")
 
+    max_length = 0
+    notes_captured = {}
     for filename in os.listdir(ldir):
         fdir = ldir+filename
         try:
             c,m=leadsheet.parse_leadsheet(fdir)
+            totaldur = 0
+            for note in m:
+                totaldur+=note[1]
             mseq = []
             pseq = []
             cseq = []
+            ckeyseq = []
             dseq = []
             index_count = 0
             valid_leadsheet = True
             slot = 0
+            clen = len(c)
             if PITCH_REP == PITCH_MIDI:
+                isStart = True
                 for note in m:
-                    cseq.append(c[index_count][0]) # get chord key for the slot
-                    index_count+=1
+                    if isStart and note[0] != None:
+                        splist.append(note[0]-MIDI_MIN)
+                        isStart = False
+                    cseq.append(c[index_count]) # get the full chord vec for the slot
+                    ckeyseq.append(c[index_count][0]) # get chord key for the slot
 
                     if note[0] != None:
-                        assert note[0] >= MIDI_MIN 
+                        assert note[0] >= MIDI_MIN
                         assert note[0] <= MIDI_MAX
                     restVal = MIDI_MAX+1
                     isRest = note[0] == None
                     nval = restVal if isRest else note[0]
-                    if isRest and note[1] > 24 or note[1] > 48:
-                        valid_leadsheet = False
-                        break
+                    #if note[1] > 48:
+                    #    valid_leadsheet = False
+                    #    break
                     actNoteVal = nval - MIDI_MIN # scale down to start at 0
+                    dur = -1
                     if bits_or_onehot == BITS:
                         dur = int(round(note[1]*wholeNoteDuration/48.0))
                     elif bits_or_onehot == ONE_HOT:
@@ -129,29 +152,34 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
                                 print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                             dur = DURATION_MAPPING[note[1]]
                         except KeyError:
+                            keyerror_count += 1
+                            valid_leadsheet = False
+                            break
                             if verbose:
                                 print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                     mseq.append(actNoteVal)
                     dseq.append(dur)
+                    index_count+=1
 
                     pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
                     pval_high = 0.0 if isRest else 1-pval_low
                     pseq.append((pval_high,pval_low))
 
                     for _ in range(note[1]-1):
-                        cseq.append(c[index_count][0])
-                        index_count+=1
+                        index_count+=1 # skip chords for sustain
                     if index_count >= SEQ_LEN:
                         break
 
             elif PITCH_REP == PITCH_INTERVAL:
+                prevVal = None
                 isStart = True
                 for note in m:
                     if isStart and note[0] != None:
-                        prevVal = note[0]-1
+                        prevVal = note[0]
+                        splist.append(note[0]-MIDI_MIN)
                         isStart = False
-                    cseq.append(c[index_count][0]) # get chord key for the slot
-                    index_count+=1
+                    cseq.append(c[index_count])
+                    ckeyseq.append(c[index_count][0]) # get chord key for the slot
 
                     if note[0] != None:
                         assert note[0] >= MIDI_MIN 
@@ -159,16 +187,31 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
                     restVal = MAX_INTERV+1
                     isRest = note[0] == None
                     nval = restVal if isRest else note[0]-prevVal
-                    nval = nval - MIN_INTERV
+                    nval = nval - MIN_INTERV # normalize to 0
                     prevVal = prevVal if isRest else note[0]
-                    if isRest and note[1] > 24 or note[1] > 48:
-                        valid_leadsheet = False
-                        break
+                    #if note[1] > 48:
+                    #    valid_leadsheet = False
+                    #    break
                     if bits_or_onehot == BITS:
                         dur = int(round(note[1]*wholeNoteDuration/48.0))
                     elif bits_or_onehot == ONE_HOT:
-                        dur = DURATION_MAPPING[note[1]]
-                    mseq.append((nval,dur))
+                        try:
+                            if note[1] not in DURATION_MAPPING.keys():
+                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                            dur = DURATION_MAPPING[note[1]]
+                        except KeyError:
+                            keyerror_count += 1
+                            valid_leadsheet = False
+                            break
+                            if verbose:
+                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                    mseq.append(nval)
+                    if nval in notes_captured.keys():
+                        notes_captured[nval] += 1
+                    else:
+                        notes_captured[nval] = 1
+                    dseq.append(dur)
+                    index_count+=1
 
                     midival = MIDI_MAX+1 if isRest else note[0]
                     pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
@@ -176,15 +219,15 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
                     pseq.append((pval_high,pval_low))
 
                     for _ in range(note[1]-1):
-                        cseq.append(c[index_count][0])
                         index_count+=1
                     if index_count >= SEQ_LEN:
                         break
 
             elif PITCH_REP == PITCH_CHORD:
                 for note in m:
+                    cseq = c[index_count]
                     ckey = c[index_count][0]
-                    cseq.append(ckey) # get chord key for the slot
+                    ckeyseq.append(ckey) # get chord key for the slot
                     index_count+=1
 
                     if note[0] != None:
@@ -193,14 +236,15 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
                     restVal = 12 # pitches go 0-11
                     isRest = note[0] == None
                     nval = restVal if isRest else (note[0]-ckey) % 12
-                    if isRest and note[1] > 24 or note[1] > 48:
-                        valid_leadsheet = False
-                        break
+                    #if isRest and note[1] > 24 or note[1] > 48:
+                    #    valid_leadsheet = False
+                    #    break
                     if bits_or_onehot == BITS:
                         dur = int(round(note[1]*wholeNoteDuration/48.0))
                     elif bits_or_onehot == ONE_HOT:
                         dur = DURATION_MAPPING[note[1]]
-                    mseq.append((nval,0))
+                    mseq.append(nval)
+                    dseq.append(dur)
 
                     midival = MIDI_MAX+1 if isRest else note[0]
                     pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
@@ -208,7 +252,6 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
                     pseq.append((pval_high,pval_low))
 
                     for _ in range(note[1]-1):
-                        cseq.append(c[index_count][0])
                         index_count+=1
                     if index_count >= SEQ_LEN:
                         break
@@ -219,8 +262,10 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
             numParsed += 1
             clist.append(c)
             mlist.append(mseq)
+            if max_length < len(mseq):
+                max_length = len(mseq)
             poslist.append(pseq)
-            ckeylist.append(cseq)
+            ckeylist.append(ckeyseq)
             namelist.append(filename)
             dlist.append(dseq)
         except KeyError:
@@ -236,7 +281,9 @@ def parseLeadsheets(ldir,wholeNoteDuration=128.0,verbose=False):
         print("Num assert errors: " + str(asserterror_count))
         print("Num leadsheets with too big rests: " + str(bigrest_count))
         print("Num leadsheets successfully parsed: " + str(numParsed))
-    return [clist, mlist,poslist,ckeylist,namelist,dlist]
+        print("Max length: " + str(max_length))
+        print(notes_captured)
+    return [clist, mlist,poslist,ckeylist,namelist,dlist,splist]
 
 def saveLeadsheets(parsedLists,outputDirs):
     """
