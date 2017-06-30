@@ -95,6 +95,7 @@ EMB_DIM = 10
 EMB_DIM_DUR = 5
 HIDDEN_DIM = 300
 HIDDEN_DIM_DUR = 50
+NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 27
@@ -110,12 +111,13 @@ SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline rati
 TRAIN_ITER = 15000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
-LEARNING_RATE = 1e-3 * MAX_SEQ_LENGTH
+G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
+LEARNING_RATE = 1e-3 * MAX_SEQ_LENGTH # 1e-3 is stable-ish, 1e-2 oscillates, 1e-4 is slow
 SEED = 88
 
 def get_trainable_model():
     return model.GRU(
-        NUM_EMB, NUM_EMB_DUR, EMB_DIM, EMB_DIM_DUR, HIDDEN_DIM, HIDDEN_DIM_DUR,
+        NUM_EMB, NUM_EMB_DUR, EMB_DIM, EMB_DIM_DUR, HIDDEN_DIM, HIDDEN_DIM_DUR,NUMBER_HIDDEN_LAYERS,
         MAX_SEQ_LENGTH, START_TOKEN, START_TOKEN_DUR, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
         learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX)
 
@@ -239,7 +241,7 @@ def main():
         if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
             print('###### FREEZING DISCRIMINATOR')
             skipD = True
-        if latest_g_loss != None and latest_g_loss < 2.5:
+        if latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY:
             startUnsup = True
         if startUnsup:
             skipG = False
