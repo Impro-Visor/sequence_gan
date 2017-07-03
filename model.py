@@ -199,13 +199,13 @@ class RNN(object):
             sample = samples.read(i)
 
             # Feed inputs to GRU
-            h_t_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, tf.to_float(beat), a_count, h_tm1_dur)
+            h_t_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, beatVec, a_count, h_tm1_dur)
             oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim_dur, h_t_dur)
             oa_cumsum = _cumsum(oa_t, self.num_emb_dur)
             next_token_dur = tf.to_int32(tf.reduce_min(tf.where(sample < oa_cumsum)))
 
             doingSustain = tf.equal(tf.constant(1,dtype=tf.int32), next_token_dur)
-            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, tf.to_float(beat), rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
+            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
             next_token = tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum)))   # sample
@@ -290,8 +290,8 @@ class RNN(object):
             next_token = notes[i]
             a_t = inputs_dur.read(i)
             next_a = durs[i]
-            h_t = self.d_recurrent_unit(self.emb_dim, self.hidden_dim, x_t,tf.to_float(beat), rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
-            h_t_dur = self.d_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t,tf.to_float(beat), a_count, h_tm1_dur)
+            h_t = self.d_recurrent_unit(self.emb_dim, self.hidden_dim, x_t,beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
+            h_t_dur = self.d_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t,beatVec, a_count, h_tm1_dur)
             y_t = self.d_classifier_unit(h_t,h_t_dur)
             pred = pred.write(i, y_t)
             dur = duration_tensor_to_beat_duration(next_a)
@@ -355,8 +355,8 @@ class RNN(object):
             g_predictions, g_predictions_dur):
             beat = tf.mod(beat_count,numBeatsInMeasure)
             beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
-            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, tf.to_float(beat), rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
-            h_t_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, tf.to_float(beat), a_count, h_tm1_dur)
+            h_t = self.g_recurrent_unit(self.emb_dim, self.hidden_dim, x_t, beatVec, rep_count, h_tm1,chordkey_vec,chordnote_vec,low,high)
+            h_t_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, beatVec, a_count, h_tm1_dur)
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur,self.hidden_dim_dur, h_t_dur)
             g_predictions = g_predictions.write(i, o_t)
@@ -550,9 +550,9 @@ class GRU(RNN):
         W_rrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
-        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
-        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
-        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
+        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
         W_rx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_zx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_hx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
@@ -569,7 +569,7 @@ class GRU(RNN):
 
             rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
-            beatVec = tf.reshape(beatVec, [1,1])#self.lenBeatVec, 1])
+            beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
                 tf.matmul(W_rbeat, beatVec) + \
@@ -604,9 +604,9 @@ class GRU(RNN):
         W_rrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hrepcount = tf.Variable(self.init_matrix([hidden_dim, 1]))
-        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
-        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
-        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, 1]))#self.lenBeatVec]))
+        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
         W_rx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_zx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_hx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
@@ -631,7 +631,7 @@ class GRU(RNN):
             chordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1,1])
             rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
-            beatVec = tf.reshape(beatVec, [1,1])#self.lenBeatVec, 1])
+            beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
                 tf.matmul(W_rckey,chordkey_vec) + \

@@ -239,7 +239,7 @@ def main():
         if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
             print('###### FREEZING DISCRIMINATOR')
             skipD = True
-        if latest_g_loss != None and latest_g_loss < 2.5:
+        if latest_g_loss != None and latest_g_loss < 2.0:
             startUnsup = True
         if startUnsup:
             skipG = False
