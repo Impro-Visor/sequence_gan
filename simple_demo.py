@@ -108,7 +108,7 @@ START_TOKEN_POS_HIGH = 0
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline ratio.
-TRAIN_ITER = 15000  # generator/discriminator alternating
+TRAIN_ITER = 50000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
 G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
@@ -119,7 +119,7 @@ def get_trainable_model():
     return model.GRU(
         NUM_EMB, NUM_EMB_DUR, EMB_DIM, EMB_DIM_DUR, HIDDEN_DIM, HIDDEN_DIM_DUR,NUMBER_HIDDEN_LAYERS,
         MAX_SEQ_LENGTH, START_TOKEN, START_TOKEN_DUR, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
-        learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX)
+        learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX,ENCODING=ENCODING)
 
 
 def verify_sequence(seq):
@@ -180,8 +180,9 @@ def get_random_sequence(sequences,durseqs,chordseqs,lows,highs,spseq):
     low = lows[i]
     high = highs[i]
     sequence_length = len(notes)
-    start_pitch = spseq[i]
-    return notes,durs,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch
+    start_pitch = spseq[i][0]
+    start_duration = spseq[i][1]
+    return notes,durs,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration
 
 
 def test_sequence_definition():
@@ -227,17 +228,17 @@ def main():
         melodyseqs,durseqs,chordseqs,lows,highs,spseq = get_sequences(NPATH,DPATH,CPATH,PPATH,SPPATH)
         latest_g_loss,latest_d_loss,actual_seq, actual_seq_dur, \
         sup_gen_x, sup_gen_x_dur, unsup_gen_x, unsup_gen_x_dur, \
-        supervised_chord_keys, supervised_chord_keys_onehot, supervised_chord_notes, supervised_sps, \
-        unsupervised_chord_keys, unsupervised_chord_keys_onehot, unsupervised_chord_notes, unsupervised_sps = train.train_epoch(
+        supervised_chord_keys, supervised_chord_keys_onehot, supervised_chord_notes, supervised_sps, supervised_sps_dur, \
+        unsupervised_chord_keys, unsupervised_chord_keys_onehot, unsupervised_chord_notes, unsupervised_sps, unsupervised_sps_dur = train.train_epoch(
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,
             sequences=melodyseqs,durseqs=durseqs,chordseqs=chordseqs,lows=lows,highs=highs,spseq=spseq,
             verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG, note_adjust=NOTEADJUST)
-        actuals.append([actual_seq,actual_seq_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps])
-        sups.append([sup_gen_x,sup_gen_x_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps])
-        unsups.append([unsup_gen_x,unsup_gen_x_dur,unsupervised_chord_notes,unsupervised_chord_keys,unsupervised_chord_keys_onehot, unsupervised_sps])
+        actuals.append([actual_seq,actual_seq_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps, supervised_sps_dur])
+        sups.append([sup_gen_x,sup_gen_x_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps, supervised_sps_dur])
+        unsups.append([unsup_gen_x,unsup_gen_x_dur,unsupervised_chord_notes,unsupervised_chord_keys,unsupervised_chord_keys_onehot, unsupervised_sps,unsupervised_sps_dur])
         if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
             print('###### FREEZING DISCRIMINATOR')
             skipD = True
@@ -254,14 +255,14 @@ def main():
                 #proportion_supervised = 0.1
                 #startUnsup = False
 
-        seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch = get_random_sequence(melodyseqs,durseqs,chordseqs,lows,highs,spseq)
+        seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration = get_random_sequence(melodyseqs,durseqs,chordseqs,lows,highs,spseq)
         #keyshift = random.randint(1,7)
         #for i in range(len(chordkeys)):
             #chordkeys[i] = (chordkeys[i]+keyshift) % 12
-        gen_x, gen_x_dur = trainable_model.generate(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch)
+        gen_x, gen_x_dur = trainable_model.generate(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
         gen_x = [x for x in gen_x]
         gen_x_dur = [x for x in gen_x_dur]
-        generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch])
+        generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch,start_duration])
 
     all_seqs = [actuals, sups, unsups]
     for seqs in all_seqs:

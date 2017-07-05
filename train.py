@@ -43,12 +43,14 @@ def train_epoch(sess, trainable_model, num_iter,
     supervised_chord_key_onehot = None
     supervised_chord_notes = None
     supervised_sp = None
+    supervised_sp_dur = None
     unsupervised_gen_x = None
     unsupervised_gen_x_dur = None
     unsupervised_chord_key = None
     unsupervised_chord_key_onehot = None
     unsupervised_chord_notes = None
     unsupervised_sp = None
+    unsupervised_sp_dur = None
     actual_seq = None
     actual_seq_dur = None
     print('running %d iterations with %d g steps and %d d steps' % (num_iter, g_steps, d_steps))
@@ -57,14 +59,15 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipGenerator:
             for _ in range(g_steps):
                 if random.random() < proportion_supervised:
-                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
+                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
                     supervised_chord_key = chordkeys
                     supervised_chord_key_onehot = chordkeys_onehot
                     supervised_chord_notes = chordnotes
                     supervised_sp = start_pitch
+                    supervised_sp_dur = start_duration
                     actual_seq = seq
                     actual_seq_dur = seq_dur
-                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch)
+                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration)
                     supervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
                         try:
@@ -77,13 +80,14 @@ def train_epoch(sess, trainable_model, num_iter,
                         supervised_correct_generation.append(
                             verify_sequence(supervised_gen_x))
                 else:
-                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
+                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
                     unsupervised_chord_key = chordkeys
                     unsupervised_chord_key_onehot = chordkeys_onehot
                     unsupervised_chord_notes = chordnotes
                     unsupervised_sp = start_pitch
+                    unsupervised_sp_dur = start_duration
                     _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_dur = \
-                        trainable_model.train_g_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch)
+                        trainable_model.train_g_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
                     expected_rewards.append(expected_reward)
                     unsupervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
@@ -97,19 +101,21 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipDiscriminator:
             for _ in range(d_steps):
                 if random.random() < proportion_generated:
-                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
-                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch)
+                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
+                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration)
                     supervised_chord_key = chordkeys
                     supervised_chord_key_onehot = chordkeys_onehot
                     supervised_chord_notes = chordnotes
                     supervised_sp = start_pitch
+                    supervised_sp_dur = start_duration
                 else:
-                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
-                    _, d_loss = trainable_model.train_d_gen_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch)
+                    seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration = next_sequence(sequences,durseqs,chordseqs,lows,highs,spseq)
+                    _, d_loss = trainable_model.train_d_gen_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
                     unsupervised_chord_key = chordkeys
                     unsupervised_chord_key_onehot = chordkeys_onehot
                     unsupervised_chord_notes = chordnotes
                     unsupervised_sp = start_pitch
+                    unsupervised_sp_dur = start_duration
                 d_losses.append(d_loss)
 
     print('epoch statistics:')
@@ -132,5 +138,5 @@ def train_epoch(sess, trainable_model, num_iter,
     print(unsup_gen_x_dur)
     print('>>>> expected rewards:', np.mean(expected_rewards, axis=0))
     return g_loss,d_loss,actual_seq_print, actual_seq_dur, sup_gen_x, sup_gen_x_dur, unsup_gen_x, unsup_gen_x_dur, \
-        supervised_chord_key, supervised_chord_key_onehot, supervised_chord_notes,supervised_sp,\
-        unsupervised_chord_key, unsupervised_chord_key_onehot, unsupervised_chord_notes,unsupervised_sp
+        supervised_chord_key, supervised_chord_key_onehot, supervised_chord_notes,supervised_sp,supervised_sp_dur,\
+        unsupervised_chord_key, unsupervised_chord_key_onehot, unsupervised_chord_notes,unsupervised_sp,unsupervised_sp_dur
