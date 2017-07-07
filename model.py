@@ -318,8 +318,8 @@ class RNN(object):
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),self.start_pitch,
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
-                tf.constant(0,dtype=tf.int32),self.start_duration,
-                tf.constant(0,dtype=tf.int32),self.start_pitch,
+                tf.constant(1,dtype=tf.int32),self.start_duration,
+                tf.constant(1,dtype=tf.int32),self.start_pitch,
                 tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),self.h0,self.h0s,self.h0_dur,self.h0s_dur, 
                 gen_o, gen_x,gen_o_dur,gen_x_dur,gen_o_pitch,gen_x_pitch,gen_low, gen_high))
 
@@ -385,8 +385,8 @@ class RNN(object):
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.gen_low.stack(),self.gen_high.stack(),
-                tf.constant(0,dtype=tf.int32), self.start_duration, self.gen_x_dur,
-                tf.constant(0,dtype=tf.int32), self.start_pitch, self.gen_x,
+                tf.constant(1,dtype=tf.int32), self.start_duration, self.gen_x_dur,
+                tf.constant(1,dtype=tf.int32), self.start_pitch, self.gen_x,
                 ta_emb_gen_x, ta_emb_gen_x_dur,self.d_h0,self.d_h0_dur, d_gen_predictions))
         self.d_gen_predictions = tf.reshape(
                 self.d_gen_predictions.stack(),
@@ -397,8 +397,8 @@ class RNN(object):
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.lows,self.highs,
-                tf.constant(0,dtype=tf.int32),self.start_duration,self.x_dur,
-                tf.constant(0,dtype=tf.int32),self.start_pitch,self.x,
+                tf.constant(1,dtype=tf.int32),self.start_duration,self.x_dur,
+                tf.constant(1,dtype=tf.int32),self.start_pitch,self.x,
                 ta_emb_real_x, ta_emb_real_x_dur,self.d_h0,self.d_h0_dur, d_real_predictions))
         self.d_real_predictions = tf.reshape(
                 self.d_real_predictions.stack(),
@@ -461,8 +461,8 @@ class RNN(object):
             body=_pretrain_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
-                tf.constant(0,dtype=tf.int32),self.start_duration,
-                tf.constant(0,dtype=tf.int32),self.start_pitch,
+                tf.constant(1,dtype=tf.int32),self.start_duration,
+                tf.constant(1,dtype=tf.int32),self.start_pitch,
                 tf.gather(self.g_embeddings, self.start_pitch), tf.gather(self.g_embeddings_dur,self.start_duration),self.h0, self.temph0s, self.h0_dur, self.temph0s_dur,
                 g_predictions,g_predictions_dur))
 
