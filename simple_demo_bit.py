@@ -93,7 +93,7 @@ if LEADSHEET_CHOICE == TRANSCRIPTIONS:
 NUM_EMB_DUR = 15
 EMB_DIM = 10
 EMB_DIM_DUR = 5
-HIDDEN_DIM = 100 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers.
+HIDDEN_DIM = 500 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers.
 HIDDEN_DIM_DUR = 50 # 50 has been working with 1 and 2 layers.
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
