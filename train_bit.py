@@ -87,8 +87,11 @@ def train_epoch(sess, trainable_model, num_iter,
                     unsupervised_chord_notes = chordnotes
                     unsupervised_sp = start_pitch
                     unsupervised_sp_dur = start_duration
-                    _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_dur = \
+                    _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_dur_temp = \
                         trainable_model.train_g_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
+                    #print(unsupervised_gen_x_dur_temp)
+                    unsupervised_gen_x_dur = np.argmax(unsupervised_gen_x_dur_temp,axis=2)
+                    unsupervised_gen_x_dur = [list(x) for x in unsupervised_gen_x_dur]
                     expected_rewards.append(expected_reward)
                     unsupervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):

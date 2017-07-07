@@ -216,7 +216,7 @@ class RNN(object):
         gen_o_dur = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
                                              dynamic_size=False, infer_shape=True)
         gen_x_dur = tensor_array_ops.TensorArray(dtype=tf.int32, size=self.sequence_length,
-                                             dynamic_size=False, infer_shape=True)
+                                             dynamic_size=False, infer_shape=True, clear_after_read=False)
         gen_high = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
                                              dynamic_size=False, infer_shape=True)
         gen_low = tensor_array_ops.TensorArray(dtype=tf.float32, size=self.sequence_length,
@@ -318,7 +318,7 @@ class RNN(object):
         _, _, \
         _, _, _, _, _, _, \
         self.gen_o, self.gen_x, self.gen_o_dur, self.gen_x_dur, self.gen_low, self.gen_high = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20,_21,_22,_23,_24: i < self.sequence_length,
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20,_21,_22: i < self.sequence_length,
             body=_g_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),self.start_pitch,
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
@@ -506,8 +506,8 @@ class RNN(object):
         
         # TODO: ADD dur TO LOSS
         self.g_loss = \
-            -tf.reduce_mean(tf.log(tf.clip_by_value(self.gen_o.stack(),1e-7,1e7)) * normalized_rewards) \
-            -tf.reduce_mean(tf.log(tf.clip_by_value(self.gen_o_dur.stack(),1e-7,1e7)) * normalized_rewards)
+            -tf.reduce_mean(tf.log(tf.clip_by_value(self.gen_o.stack(),1e-7,1e7)) * normalized_rewards) #\
+        #    -tf.reduce_mean(tf.log(tf.clip_by_value(self.gen_o_dur.stack(),1e-7,1e7)) * normalized_rewards)
 
         # pretraining loss
         self.pretrain_loss = \
@@ -539,7 +539,7 @@ class RNN(object):
 
         self.pretrain_grad = tf.gradients(self.pretrain_loss, self.g_params)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
-        self.gen_x_tensor = tf.one_hot(self.gen_x_dur.stack(),7)
+        self.gen_x_tensor = tf.one_hot(self.gen_x_dur.stack(),2)
 
     def generate(self, session,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration):
         outputs = session.run(

@@ -219,11 +219,12 @@ def main():
     unsups = []
     generations = []
     curric_count = 0
-    proportion_supervised = 0.0
+    proportion_supervised = 1.0
     skipD = False
     skipG = False
     startUnsup = False
-    for epoch in range(TRAIN_ITER // EPOCH_ITER):
+    listofepochs = range(TRAIN_ITER // EPOCH_ITER)
+    for epoch in listofepochs:
         print('epoch', epoch)
         melodyseqs,durseqs,chordseqs,lows,highs,spseq = get_sequences(NPATH,DPATH,CPATH,PPATH,SPPATH)
         latest_g_loss,latest_d_loss,actual_seq, actual_seq_dur, \
@@ -260,9 +261,18 @@ def main():
         #for i in range(len(chordkeys)):
             #chordkeys[i] = (chordkeys[i]+keyshift) % 12
         gen_x, gen_x_dur = trainable_model.generate(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
+        gen_x_dur = np.argmax(gen_x_dur,axis=2)
         gen_x = [x for x in gen_x]
-        gen_x_dur = [x for x in gen_x_dur]
+        gen_x_dur = [list(x) for x in gen_x_dur]
         generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch,start_duration])
+        if epoch == listofepochs[-1]:
+            for _ in range(50):
+                gen_x, gen_x_dur = trainable_model.generate(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration)
+                gen_x_dur = np.argmax(gen_x_dur,axis=2)
+                gen_x = [x for x in gen_x]
+                gen_x_dur = [list(x) for x in gen_x_dur]
+                generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch,start_duration])
+
 
     all_seqs = [actuals, sups, unsups]
     for seqs in all_seqs:
