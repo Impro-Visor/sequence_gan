@@ -6,7 +6,7 @@ import json
 USING_TRANSCRIPTIONS = False
 BITS = True
 ONE_HOT = False
-bits_or_onehot = ONE_HOT
+bits_or_onehot = BITS
 
 PURE_PITCH = True
 PITCH_MIDI = 0
@@ -79,7 +79,8 @@ DURATION_MAPPING = {
     72: WHOLE_DOTTED,
     }
 
-WHOLE_NOTE_DURATION = 128.0
+NUM_BITS = 7
+WHOLE_NOTE_DURATION = 64.0
 
 def parseLeadsheets(ldir,verbose=False):
     """
@@ -132,7 +133,11 @@ def parseLeadsheets(ldir,verbose=False):
                 for note in m:
                     dur = -1
                     if bits_or_onehot == BITS:
-                        dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
+                        newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
+                        bindur = bin(newdur)[2:]
+                        assert len(bindur) <= 7
+                        bindur = '0'*(NUM_BITS-len(bindur))+bindur
+                        dur = [int(x) for x in bindur]
                     elif bits_or_onehot == ONE_HOT:
                         try:
                             if note[1] not in DURATION_MAPPING.keys():

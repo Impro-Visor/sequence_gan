@@ -486,7 +486,7 @@ class RNN(object):
         decays = tf.exp(tf.log(self.reward_gamma) * tf.to_float(tf.range(self.sequence_length)))
         rewards = _backwards_cumsum(decays * tf.sigmoid(self.d_gen_predictions),
                                     self.sequence_length)
-        zero_pads = tf.zeros([self.max_sequence_length - self.sequence_length],tf.float32)
+        #zero_pads = tf.zeros([self.max_sequence_length - self.sequence_length],tf.float32)
         r_div = tf.div(rewards, _backwards_cumsum(decays, self.sequence_length))
         expected_reward_short = tf.slice(self.expected_reward,[0],[self.sequence_length])
         normalized_rewards = r_div - expected_reward_short #\
