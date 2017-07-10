@@ -204,6 +204,7 @@ class RNN(object):
         self.x_dur = tf.placeholder(tf.int32, shape=[None])  # sequence of indices of true durs, not including start token
         self.x_pitch = tf.placeholder(tf.int32,shape=[None]) # sequence of indices of true notes, not including start token
         self.samples = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
+        self.samples_dur = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
         self.chordKeys = tf.placeholder(tf.int32, shape=[None]) # sequence of chord key values
         self.start_pitch = tf.placeholder(tf.int32,shape=[]) # starting pitch for INTERVALs
         self.start_duration = tf.placeholder(tf.int32,shape=[]) # starting duration
@@ -234,6 +235,10 @@ class RNN(object):
             dtype=tf.float32, size=self.sequence_length)
         samples = samples.unstack(self.samples)
 
+        samples_dur = tensor_array_ops.TensorArray(
+            dtype=tf.float32, size=self.sequence_length)
+        samples_dur = samples_dur.unstack(self.samples_dur)
+
         def _g_hidden_layers(j,hidden_dim,x_t,h_tm1s,layers):
             gru_layer = layers[j]
             h_t = gru_layer(hidden_dim, x_t, h_tm1s[j])
@@ -251,6 +256,7 @@ class RNN(object):
             beat = tf.mod(beat_count,numBeatsInMeasure)
             beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             sample = samples.read(i)
+            sample_dur = samples_dur.read(i)
 
             # Feed duration inputs to input GRU layer of duration RNN
             h_t_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, beatVec, a_count, h_tm1_dur)
@@ -266,7 +272,7 @@ class RNN(object):
             # Feed output to softmax unit to get next predicted token
             oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim_dur, h_t_dur)
             oa_cumsum = _cumsum(oa_t, self.num_emb_dur)
-            next_token_dur = tf.to_int32(tf.reduce_min(tf.where(sample < oa_cumsum)))
+            next_token_dur = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample_dur < oa_cumsum)),0))
 
             
             # Feed pitch inputs to input GRU layer of pitch RNN
@@ -282,7 +288,7 @@ class RNN(object):
             # Feed output to softmax unit to get next predicted token
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
-            next_token = tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum)))   # sample
+            next_token = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < o_cumsum)),0))   # sample
 
             # Calculate low and high for next note. COMPUTATION DEPENDS ON INTERVAL USAGE.
             newLow = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0.0,dtype=tf.float32), lambda: tf.to_float(next_token)/tf.constant((MIDI_MAX- MIDI_MIN),dtype=tf.float32))
@@ -537,7 +543,7 @@ class RNN(object):
                            self.h0_dur: np.random.normal(size=self.hidden_dim_dur),
                            self.h0s: np.array([np.random.normal(size=self.hidden_dim) for _ in range(self.num_hidden_layers)]),
                            self.h0s_dur: np.array([np.random.normal(size=self.hidden_dim_dur) for _ in range(self.num_hidden_layers)]),
-                           self.samples: np.random.random(sequence_length),
+                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration})
         return outputs
@@ -550,7 +556,7 @@ class RNN(object):
                            self.h0_dur: np.random.normal(size=self.hidden_dim_dur),
                            self.h0s: np.array([np.random.normal(size=self.hidden_dim) for _ in range(self.num_hidden_layers)]),
                            self.h0s_dur: np.array([np.random.normal(size=self.hidden_dim_dur) for _ in range(self.num_hidden_layers)]),
-                           self.samples: np.random.random(sequence_length),
+                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration})
         return outputs
@@ -562,7 +568,7 @@ class RNN(object):
                            self.h0_dur: np.random.normal(size=self.hidden_dim_dur),
                            self.h0s: np.array([np.random.normal(size=self.hidden_dim) for _ in range(self.num_hidden_layers)]),
                            self.h0s_dur: np.array([np.random.normal(size=self.hidden_dim_dur) for _ in range(self.num_hidden_layers)]),
-                           self.samples: np.random.random(sequence_length),
+                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration})
         return outputs

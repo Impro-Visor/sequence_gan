@@ -6,7 +6,7 @@ import json
 USING_TRANSCRIPTIONS = False
 BITS = True
 ONE_HOT = False
-bits_or_onehot = BITS
+bits_or_onehot = ONE_HOT
 
 PURE_PITCH = True
 PITCH_MIDI = 0
