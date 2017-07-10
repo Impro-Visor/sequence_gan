@@ -40,7 +40,7 @@ SIXTEENTH = tf.constant(12,dtype=tf.int32)
 SIXTEENTH_DOTTED = tf.constant(13,dtype=tf.int32)
 SIXTEENTH_TRIPLET = tf.constant(14,dtype=tf.int32)
 
-WHOLE_NOTE_DURATION = 64.0
+WHOLE_NOTE_DURATION = 120.0
 durdict_ints = {
     WHOLE: round(WHOLE_NOTE_DURATION),
     WHOLE_DOTTED: round(WHOLE_NOTE_DURATION*1.5),
@@ -67,7 +67,7 @@ class RNN(object):
     def __init__(self, num_emb, num_emb_dur, emb_dim, emb_dim_dur, hidden_dim, hidden_dim_dur,num_hidden_layers,
                  max_sequence_length, start_token, start_token_dur, start_token_pos_low, start_token_pos_high,
                  learning_rate=0.01, reward_gamma=0.9,MIDI_MIN=55,MIDI_MAX=89,ENCODING=ONE_HOT):
-        powers_of_two = tf.constant([64,32,16,8,4,2,1])
+        powers_of_two = tf.constant([128,64,32,16,8,4,2,1])
         def duration_tensor_to_beat_duration(dtensor):
             return tf.reduce_sum(dtensor*powers_of_two)
 
@@ -130,6 +130,7 @@ class RNN(object):
             self.g_output_unit_b5 = self.create_output_unit_no_emb(2,self.hidden_dim,self.g_params)
             self.g_output_unit_b6 = self.create_output_unit_no_emb(2,self.hidden_dim,self.g_params)
             self.g_output_unit_b7 = self.create_output_unit_no_emb(2,self.hidden_dim,self.g_params)
+            self.g_output_unit_b8 = self.create_output_unit_no_emb(2,self.hidden_dim,self.g_params)
             
             #self.g_output_unit_dur = self.create_output_unit(self.num_emb_dur, self.emb_dim_dur, self.hidden_dim, self.g_params, self.g_embeddings_dur)
 
@@ -157,12 +158,12 @@ class RNN(object):
         self.temph0s = tf.placeholder(tf.float32, shape=[self.hidden_dim])
         self.temph0s_dur = tf.placeholder(tf.float32, shape=[self.hidden_dim_dur])
         self.x = tf.placeholder(tf.int32, shape=[None])  # sequence of indices of true note intervals, not including start token
-        self.x_dur = tf.placeholder(tf.int32, shape=[None,7])  # sequence of indices of true durs, not including start token
+        self.x_dur = tf.placeholder(tf.int32, shape=[None,8])  # sequence of indices of true durs, not including start token
         self.x_pitch = tf.placeholder(tf.int32,shape=[None]) # sequence of indices of true notes, not including start token
         self.samples = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
         self.chordKeys = tf.placeholder(tf.int32, shape=[None]) # sequence of chord key values
         self.start_pitch = tf.placeholder(tf.int32,shape=[]) # starting pitch for INTERVALs
-        self.start_duration = tf.placeholder(tf.int32,shape=[7]) # starting duration
+        self.start_duration = tf.placeholder(tf.int32,shape=[8]) # starting duration
         self.chordKeys_onehot = tf.placeholder(tf.int32, shape=[None]) # sequence of chord keys, onehot
         self.chordNotes = tf.placeholder(tf.int32, shape=[None, 12]) # sequence of vectors of notes in the chord
         self.lows = tf.placeholder(tf.float32, shape=[None]) # sequence of low pos ratios
@@ -215,6 +216,7 @@ class RNN(object):
             ob5_t = self.g_output_unit_b5(h_t)
             ob6_t = self.g_output_unit_b6(h_t)
             ob7_t = self.g_output_unit_b7(h_t)
+            ob8_t = self.g_output_unit_b8(h_t)
             
             ob1_cumsum = _cumsum(ob1_t, 2)
             ob2_cumsum = _cumsum(ob2_t, 2)
@@ -223,14 +225,16 @@ class RNN(object):
             ob5_cumsum = _cumsum(ob5_t, 2)
             ob6_cumsum = _cumsum(ob6_t, 2)
             ob7_cumsum = _cumsum(ob7_t, 2)
-            next_token_b1 = tf.to_int32(tf.reduce_min(tf.where(sample < ob1_cumsum)))
-            next_token_b2 = tf.to_int32(tf.reduce_min(tf.where(sample < ob2_cumsum)))
-            next_token_b3 = tf.to_int32(tf.reduce_min(tf.where(sample < ob3_cumsum)))
-            next_token_b4 = tf.to_int32(tf.reduce_min(tf.where(sample < ob4_cumsum)))
-            next_token_b5 = tf.to_int32(tf.reduce_min(tf.where(sample < ob5_cumsum)))
-            next_token_b6 = tf.to_int32(tf.reduce_min(tf.where(sample < ob6_cumsum)))
-            next_token_b7 = tf.to_int32(tf.reduce_min(tf.where(sample < ob7_cumsum)))
-            b_t = tf.stack([next_token_b1,next_token_b2,next_token_b3,next_token_b4,next_token_b5,next_token_b6,next_token_b7])
+            ob8_cumsum = _cumsum(ob8_t, 2)
+            next_token_b1 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob1_cumsum)),0))
+            next_token_b2 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob2_cumsum)),0))
+            next_token_b3 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob3_cumsum)),0))
+            next_token_b4 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob4_cumsum)),0))
+            next_token_b5 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob5_cumsum)),0))
+            next_token_b6 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob6_cumsum)),0))
+            next_token_b7 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob7_cumsum)),0))
+            next_token_b8 = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < ob8_cumsum)),0))
+            b_t = tf.stack([next_token_b1,next_token_b2,next_token_b3,next_token_b4,next_token_b5,next_token_b6,next_token_b7,next_token_b8])
 
             ob1_prob = tf.gather(ob1_t,next_token_b1)
             ob2_prob = tf.gather(ob2_t,next_token_b2)
@@ -239,15 +243,16 @@ class RNN(object):
             ob5_prob = tf.gather(ob5_t,next_token_b5)
             ob6_prob = tf.gather(ob6_t,next_token_b6)
             ob7_prob = tf.gather(ob7_t,next_token_b7)
+            ob8_prob = tf.gather(ob8_t,next_token_b8)
             
 
             # Feed output to softmax unit to get next predicted token
             o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, h_t)
             o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
-            next_token = tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum)))   # sample
+            next_token = tf.to_int32(tf.maximum(tf.reduce_min(tf.where(sample < o_cumsum)),0))   # sample
             o_prob = tf.gather(o_t,next_token)
 
-            all_prob = tf.stack([ob1_prob,ob2_prob,ob3_prob,ob4_prob,ob5_prob,ob6_prob,ob7_prob,o_prob])
+            all_prob = tf.stack([ob1_prob,ob2_prob,ob3_prob,ob4_prob,ob5_prob,ob6_prob,ob7_prob,ob8_prob, o_prob])
             mean_prob = tf.reduce_mean(all_prob)
 
             # Calculate low and high for next note. COMPUTATION DEPENDS ON INTERVAL USAGE.
@@ -410,10 +415,11 @@ class RNN(object):
             ob5_t = self.g_output_unit_b5(firstH)
             ob6_t = self.g_output_unit_b6(firstH)
             ob7_t = self.g_output_unit_b7(firstH)
+            ob8_t = self.g_output_unit_b8(firstH)
 
 
             g_predictions = g_predictions.write(i, o_t)
-            g_predictions_dur = g_predictions_dur.write(i, tf.stack([ob1_t,ob2_t,ob3_t,ob4_t,ob5_t,ob6_t,ob7_t]))
+            g_predictions_dur = g_predictions_dur.write(i, tf.stack([ob1_t,ob2_t,ob3_t,ob4_t,ob5_t,ob6_t,ob7_t,ob8_t]))
             x_tp1 = ta_emb_x.read(i)
             a_tp1 = ta_emb_x_dur.read(i)
 
@@ -441,7 +447,7 @@ class RNN(object):
                 [self.sequence_length, self.num_emb])
         self.g_predictions_dur = tf.reshape(
                 self.g_predictions_dur.stack(),
-                [self.sequence_length, 7, 2])
+                [self.sequence_length, 8, 2])
 
         # TODO JUMPPOINT
         # calculate discriminator loss
@@ -714,9 +720,9 @@ class GRU(RNN):
         W_rbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
         W_zbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
         W_hbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
-        W_ra = tf.Variable(self.init_matrix([hidden_dim, 7]))
-        W_za = tf.Variable(self.init_matrix([hidden_dim, 7]))
-        W_ha = tf.Variable(self.init_matrix([hidden_dim, 7]))
+        W_ra = tf.Variable(self.init_matrix([hidden_dim, 8]))
+        W_za = tf.Variable(self.init_matrix([hidden_dim, 8]))
+        W_ha = tf.Variable(self.init_matrix([hidden_dim, 8]))
         W_rx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_zx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
         W_hx = tf.Variable(self.init_matrix([hidden_dim, emb_dim]))
@@ -744,7 +750,7 @@ class GRU(RNN):
             rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             a_count = tf.reshape(tf.to_float(a_count), [1,1])
             x_t = tf.reshape(tf.to_float(x_t), [emb_dim, 1])
-            a_t = tf.reshape(tf.to_float(a_t), [7, 1])
+            a_t = tf.reshape(tf.to_float(a_t), [8, 1])
             beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
             h_tm1 = tf.reshape(tf.to_float(h_tm1), [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \

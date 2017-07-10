@@ -79,8 +79,9 @@ DURATION_MAPPING = {
     72: WHOLE_DOTTED,
     }
 
-NUM_BITS = 7
-WHOLE_NOTE_DURATION = 64.0
+NUM_BITS = 8
+WHOLE_NOTE_DURATION = 120.0
+IMPROVISOR_WHOLE_NOTE_DURATION = 48.0
 
 def parseLeadsheets(ldir,verbose=False):
     """
@@ -133,9 +134,9 @@ def parseLeadsheets(ldir,verbose=False):
                 for note in m:
                     dur = -1
                     if bits_or_onehot == BITS:
-                        newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))-1
+                        newdur = int(round(note[1]*WHOLE_NOTE_DURATION/IMPROVISOR_WHOLE_NOTE_DURATION))-1
                         bindur = bin(newdur)[2:]
-                        assert len(bindur) <= 7
+                        assert len(bindur) <= 8
                         bindur = '0'*(NUM_BITS-len(bindur))+bindur
                         dur = [int(x) for x in bindur]
                     elif bits_or_onehot == ONE_HOT:
