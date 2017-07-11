@@ -125,17 +125,29 @@ def train_epoch(sess, trainable_model, num_iter,
         print('>>>> correct generations (supervised, unsupervised):', np.mean(supervised_correct_generation), np.mean(unsupervised_correct_generation))
     print('>>>> actual melody:')
     actual_seq_print = None if actual_seq==None else [x-note_adjust for x in actual_seq]
-    print(actual_seq_print,)
-    print(actual_seq_dur)
+    if actual_seq_print == None:
+        print(None)
+        print(None)
+    else:
+        print([supervised_sp] + actual_seq_print,)
+        print([supervised_sp_dur] + actual_seq_dur)
     print('>>>> sampled generations (supervised, unsupervised):',)
     sup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in supervised_gen_x] if supervised_gen_x is not None else None
     sup_gen_x_dur = [words[x] if words else x for x in supervised_gen_x_dur] if supervised_gen_x_dur is not None else None
-    print(sup_gen_x,)
-    print(sup_gen_x_dur,)
+    if sup_gen_x == None:
+        print(None)
+        print(None)
+    else:
+        print([supervised_sp] + sup_gen_x,)
+        print([supervised_sp_dur] + sup_gen_x_dur,)
     unsup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
     unsup_gen_x_dur = [words[x] if words else x for x in unsupervised_gen_x_dur] if unsupervised_gen_x_dur is not None else None
-    print(unsup_gen_x,)
-    print(unsup_gen_x_dur)
+    if unsup_gen_x == None:
+        print(None)
+        print(None)
+    else:
+        print([unsupervised_sp] + unsup_gen_x,)
+        print([unsupervised_sp_dur] + unsup_gen_x_dur)
     print('>>>> expected rewards:', np.mean(expected_rewards, axis=0))
     return g_loss,d_loss,actual_seq_print, actual_seq_dur, sup_gen_x, sup_gen_x_dur, unsup_gen_x, unsup_gen_x_dur, \
         supervised_chord_key, supervised_chord_key_onehot, supervised_chord_notes,supervised_sp,supervised_sp_dur,\
