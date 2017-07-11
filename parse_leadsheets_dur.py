@@ -140,10 +140,11 @@ def parseLeadsheets(ldir,verbose=False):
                         dur = [int(x) for x in bindur]
                     elif bits_or_onehot == ONE_HOT:
                         try:
-                            if note[1] not in DURATION_MAPPING.keys():
-                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                            dur = DURATION_MAPPING[note[1]]
-                        except KeyError:
+                            #if note[1] not in DURATION_MAPPING.keys():
+                            #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                            assert note[1] <= 48
+                            dur = note[1]-1#DURATION_MAPPING[note[1]]
+                        except AssertionError:
                             keyerror_count += 1
                             valid_leadsheet = False
                             break

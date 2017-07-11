@@ -90,11 +90,11 @@ if LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MIDI_MIN = 44
     MIDI_MAX = 106
     START_TOKEN = 0
-NUM_EMB_DUR = 15
-EMB_DIM = 10
-EMB_DIM_DUR = 5
-HIDDEN_DIM = 500 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
-HIDDEN_DIM_DUR = 50 # 50 has been working with 1 and 2 layers.
+NUM_EMB_DUR = 48#15
+EMB_DIM = 64
+EMB_DIM_DUR = 64
+HIDDEN_DIM = 300 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
+HIDDEN_DIM_DUR = 100 # 50 has been working with 1 and 2 layers.
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
 if LEADSHEET_CHOICE == TWOFIVEONE:
@@ -108,7 +108,7 @@ START_TOKEN_POS_HIGH = 0
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline ratio.
-TRAIN_ITER = 20000  # generator/discriminator alternating
+TRAIN_ITER = 30000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
 G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach

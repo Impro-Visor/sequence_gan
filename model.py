@@ -77,8 +77,6 @@ durdict = {
 
 ONE_HOT = 0
 BITS = 1
-IMPROVISOR_WHOLE_NOTE_DURATION = 48.0
-WHOLE_NOTE_DURATION = 128.0
 
 class RNN(object):
 
@@ -86,7 +84,8 @@ class RNN(object):
                  max_sequence_length, start_token, start_token_dur, start_token_pos_low, start_token_pos_high,
                  learning_rate=0.01, reward_gamma=0.9,MIDI_MIN=55,MIDI_MAX=89,ENCODING=ONE_HOT):
         def duration_tensor_to_beat_duration(dtensor):
-            return tf.case([
+            return dtensor+1
+            """return tf.case([
                 (tf.equal(dtensor,WHOLE), lambda:durdict[WHOLE]),
                 (tf.equal(dtensor,WHOLE_DOTTED), lambda:durdict[WHOLE_DOTTED]),
                 (tf.equal(dtensor,WHOLE_TRIPLET), lambda:durdict[WHOLE_TRIPLET]),
@@ -102,29 +101,7 @@ class RNN(object):
                 (tf.equal(dtensor,SIXTEENTH), lambda:durdict[SIXTEENTH]),
                 (tf.equal(dtensor,SIXTEENTH_DOTTED), lambda:durdict[SIXTEENTH_DOTTED]),
                 (tf.equal(dtensor,SIXTEENTH_TRIPLET), lambda:durdict[SIXTEENTH_TRIPLET]),],
-                default=lambda: tf.constant(-1,dtype=tf.int32))
-        """if ENCODING == ONE_HOT:
-            def duration_tensor_to_beat_duration(dtensor):
-                return tf.case([
-                    (tf.equal(dtensor,WHOLE), lambda:durdict[WHOLE]),
-                    (tf.equal(dtensor,WHOLE_DOTTED), lambda:durdict[WHOLE_DOTTED]),
-                    (tf.equal(dtensor,WHOLE_TRIPLET), lambda:durdict[WHOLE_TRIPLET]),
-                    (tf.equal(dtensor,HALF), lambda:durdict[HALF]),
-                    (tf.equal(dtensor,HALF_DOTTED), lambda:durdict[HALF_DOTTED]),
-                    (tf.equal(dtensor,HALF_TRIPLET), lambda:durdict[HALF_TRIPLET]),
-                    (tf.equal(dtensor,QUARTER), lambda:durdict[QUARTER]),
-                    (tf.equal(dtensor,QUARTER_DOTTED), lambda:durdict[QUARTER_DOTTED]),
-                    (tf.equal(dtensor,QUARTER_TRIPLET), lambda:durdict[QUARTER_TRIPLET]),
-                    (tf.equal(dtensor,EIGHTH), lambda:durdict[EIGHTH]),
-                    (tf.equal(dtensor,EIGHTH_DOTTED), lambda:durdict[EIGHTH_DOTTED]),
-                    (tf.equal(dtensor,EIGHTH_TRIPLET), lambda:durdict[EIGHTH_TRIPLET]),
-                    (tf.equal(dtensor,SIXTEENTH), lambda:durdict[SIXTEENTH]),
-                    (tf.equal(dtensor,SIXTEENTH_DOTTED), lambda:durdict[SIXTEENTH_DOTTED]),
-                    (tf.equal(dtensor,SIXTEENTH_TRIPLET), lambda:durdict[SIXTEENTH_TRIPLET]),],
-                    default=lambda: tf.constant(-1,dtype=tf.int32))
-        elif ENCODING == BITS:
-            def duration_tensor_to_beat_duration(dtensor):
-                return tf.to_int32(tf.to_float(dtensor)*IMPROVISOR_WHOLE_NOTE_DURATION/WHOLE_NOTE_DURATION)"""
+                default=lambda: tf.constant(-1,dtype=tf.int32))"""
 
         self.num_emb = num_emb
         self.num_emb_dur = num_emb_dur
@@ -245,7 +222,7 @@ class RNN(object):
             h_tm1s[j] = h_t
             return j+1,hidden_dim, x_t,h_tm1s,layers
 
-        def _g_recurrence(i, beat_count, pitch_count,
+        def _g_recurrence(i, beat_count, pitch_count, prev_interval,
             chordkey_vec, chordnote_vec, low, high,
             a_count, prev_a,
             rep_count, prev_token, 
@@ -307,22 +284,22 @@ class RNN(object):
             gen_x_dur = gen_x_dur.write(i, next_token_dur)  # indices, not embeddings
             dur = duration_tensor_to_beat_duration(next_token_dur)
 
-            return i + 1, beat+dur, newPitch,\
+            return i + 1, beat+dur, newPitch, next_token-prev_token,\
                 self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],newLow,newHigh,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                 x_tp1, a_tp1, h_t, h_tm1s, h_t_dur, h_tm1s_dur,\
                 gen_o, gen_x,gen_o_dur,gen_x_dur,gen_o_pitch,gen_x_pitch, gen_low, gen_high
 
-        _, _, _, \
+        _, _, _, _, \
         _, _, _, _, \
         _, _, \
         _, _, \
         _, _, _, _, _, _, \
         self.gen_o, self.gen_x, self.gen_o_dur, self.gen_x_dur, self.gen_o_pitch, self.gen_x_pitch, self.gen_low, self.gen_high = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20,_21,_22,_23,_24: i < self.sequence_length,
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20,_21,_22,_23,_24,_25: i < self.sequence_length,
             body=_g_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),self.start_pitch,
+            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),self.start_pitch,tf.constant(0,dtype=tf.int32),
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
                 tf.constant(1,dtype=tf.int32),self.start_duration,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,
@@ -362,7 +339,7 @@ class RNN(object):
 
         # discriminator recurrence
 
-        def _d_recurrence(i,beat_count,
+        def _d_recurrence(i,beat_count,prev_interval,
             chordkey_vec, chordnote_vec, inputs_lows, inputs_highs,           
             a_count, prev_a, durs,
             rep_count, prev_token, notes, 
@@ -380,16 +357,16 @@ class RNN(object):
             y_t = self.d_classifier_unit(h_t,h_t_dur)
             pred = pred.write(i, y_t)
             dur = duration_tensor_to_beat_duration(next_a)
-            return i + 1, beat+dur,\
+            return i + 1, beat+dur,next_token-prev_token,\
                 self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],inputs_lows,inputs_highs,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,durs,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_dur, h_t,h_t_dur, pred
 
-        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17: i < self.sequence_length,
             body=_d_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
+            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration), tf.constant(0,dtype=tf.int32),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.gen_low.stack(),self.gen_high.stack(),
                 tf.constant(1,dtype=tf.int32), self.start_duration, self.gen_x_dur,
                 tf.constant(1,dtype=tf.int32), self.start_pitch, self.gen_x,
@@ -398,10 +375,10 @@ class RNN(object):
                 self.d_gen_predictions.stack(),
                 [self.sequence_length])
 
-        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17: i < self.sequence_length,
             body=_d_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
+            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration), tf.constant(0,dtype=tf.int32),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.lows,self.highs,
                 tf.constant(1,dtype=tf.int32),self.start_duration,self.x_dur,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,self.x,
@@ -432,7 +409,7 @@ class RNN(object):
 
         # pretrain recurrence
 
-        def _pretrain_recurrence(i, beat_count,
+        def _pretrain_recurrence(i, beat_count, prev_interval,
             chordkey_vec, chordnote_vec, low, high,      
             a_count,prev_a,
             rep_count, prev_token, 
@@ -455,17 +432,17 @@ class RNN(object):
             next_a = self.x_dur[i]
             next_token = self.x[i]
             dur = duration_tensor_to_beat_duration(next_a)
-            return i + 1, beat+dur,\
+            return i + 1, beat+dur, next_token-prev_token,\
                 self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],self.lows[i],self.highs[i],\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,\
                 x_tp1, a_tp1, firstH,secondH,firstH_dur,secondH_dur,\
                 g_predictions, g_predictions_dur
 
-        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.g_predictions, self.g_predictions_dur = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.g_predictions, self.g_predictions_dur = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18: i < self.sequence_length,
             body=_pretrain_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration),
+            loop_vars=(tf.constant(0, dtype=tf.int32),duration_tensor_to_beat_duration(self.start_duration), tf.constant(0,dtype=tf.int32)
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
                 tf.constant(1,dtype=tf.int32),self.start_duration,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,
