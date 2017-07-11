@@ -13,7 +13,7 @@ import random
 
 TWOFIVEONE = 1
 TRANSCRIPTIONS = 2
-LEADSHEET_CHOICE = TWOFIVEONE
+LEADSHEET_CHOICE = TRANSCRIPTIONS
 
 PITCH = 0
 INTERVAL = 1
@@ -32,7 +32,7 @@ if LEADSHEET_CHOICE == TWOFIVEONE:
     parsename = "ii-V-I_leadsheets"
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     print("Using Transcriptions")
-    parsename = "transcriptions"
+    parsename = "lee_morgan"
 
 expertname = ""
 NOTEADJUST = 0
@@ -86,9 +86,9 @@ elif EXPERT == INTERVAL:
     MIDI_MAX = 14 # highest interval value found in trainingset
     START_TOKEN = 0
 if LEADSHEET_CHOICE == TRANSCRIPTIONS:
-    NUM_EMB = 64
-    MIDI_MIN = 44
-    MIDI_MAX = 106
+    MIDI_MIN = 55#44
+    MIDI_MAX = 84#106
+    NUM_EMB = MIDI_MAX-MIDI_MIN+2
     START_TOKEN = 0
 NUM_EMB_DUR = 48#15
 EMB_DIM = 64
@@ -100,7 +100,7 @@ MAX_SEQ_LENGTH = 96
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 27
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
-    MAX_SEQ_LENGTH = 1000
+    MAX_SEQ_LENGTH = 15
 START_TOKEN_DUR = 0
 START_TOKEN_POS_LOW = 0
 START_TOKEN_POS_HIGH = 0
@@ -108,7 +108,7 @@ START_TOKEN_POS_HIGH = 0
 EPOCH_ITER = 100
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline ratio.
-TRAIN_ITER = 30000  # generator/discriminator alternating
+TRAIN_ITER = 100000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
 G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
@@ -264,41 +264,44 @@ def main():
         gen_x_dur = [x for x in gen_x_dur]
         generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch,start_duration])
 
-    all_seqs = [actuals, sups, unsups]
-    for seqs in all_seqs:
-        for seq in seqs:
-            if seq != None:
-                for k in range(len(seq)):
-                    val = seq[k]
-                    if val != None:
-                        if isinstance(val, (list,tuple)):
-                            for i in range(len(val)):
-                                if isinstance(val[i],(list,tuple)):
-                                    for j in range(len(val[i])):
-                                        val[i][j] = int(val[i][j])
-                                elif val[i] != None:
-                                    val[i] = int(val[i])
-                        else:
-                            seq[k] = int(seq[k])
-    with open("generations4.json",'w') as dumpfile:
-        json.dump(all_seqs, dumpfile)
 
-    for seq in generations:
-        if seq != None:
-            for k in range(len(seq)):
-                val = seq[k]
-                if val != None:
-                    if isinstance(val, (list,tuple)):
-                        for i in range(len(val)):
-                            if isinstance(val[i],(list,tuple)):
-                                for j in range(len(val[i])):
-                                    val[i][j] = int(val[i][j])
-                            elif val[i] != None:
-                                val[i] = int(val[i])
-                    else:
-                        seq[k] = int(seq[k])
-    with open("generations_g.json",'w') as dumpfile:
-        json.dump(generations,dumpfile)
+        if epoch % 100 == 0:
+            ecount = int(epoch/100)
+            all_seqs = [actuals, sups, unsups]
+            for seqs in all_seqs:
+                for seq in seqs:
+                    if seq != None:
+                        for k in range(len(seq)):
+                            val = seq[k]
+                            if val != None:
+                                if isinstance(val, (list,tuple)):
+                                    for i in range(len(val)):
+                                        if isinstance(val[i],(list,tuple)):
+                                            for j in range(len(val[i])):
+                                                val[i][j] = int(val[i][j])
+                                        elif val[i] != None:
+                                            val[i] = int(val[i])
+                                else:
+                                    seq[k] = int(seq[k])
+            with open("generations_t"+str(ecount)+".json",'w') as dumpfile:
+                json.dump(all_seqs, dumpfile)
+
+            for seq in generations:
+                if seq != None:
+                    for k in range(len(seq)):
+                        val = seq[k]
+                        if val != None:
+                            if isinstance(val, (list,tuple)):
+                                for i in range(len(val)):
+                                    if isinstance(val[i],(list,tuple)):
+                                        for j in range(len(val[i])):
+                                            val[i][j] = int(val[i][j])
+                                    elif val[i] != None:
+                                        val[i] = int(val[i])
+                            else:
+                                seq[k] = int(seq[k])
+            with open("generations_g"+str(ecount)+".json",'w') as dumpfile:
+                json.dump(generations,dumpfile)
 
 if __name__ == '__main__':
     test_sequence_definition()

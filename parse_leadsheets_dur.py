@@ -3,7 +3,7 @@ import os
 import json
 
 
-USING_TRANSCRIPTIONS = False
+USING_TRANSCRIPTIONS = True
 BITS = True
 ONE_HOT = False
 bits_or_onehot = ONE_HOT
@@ -18,7 +18,7 @@ interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 parsename = "ii-V-I_leadsheets"
 if USING_TRANSCRIPTIONS:
-    parsename = "transcriptions"
+    parsename = "lee_morgan"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -36,8 +36,8 @@ MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
 if USING_TRANSCRIPTIONS:
-    MIDI_MIN = 44
-    MIDI_MAX = 106
+    MIDI_MIN = 55#44
+    MIDI_MAX = 84#106
     NUM_NOTES = MIDI_MAX-MIDI_MIN+1
 
 SEQ_LEN = 96
@@ -81,6 +81,7 @@ DURATION_MAPPING = {
 
 NUM_BITS = 7
 WHOLE_NOTE_DURATION = 64.0
+NOTES_PER_SEQ = 16
 
 def parseLeadsheets(ldir,verbose=False):
     """
@@ -113,182 +114,187 @@ def parseLeadsheets(ldir,verbose=False):
     notes_captured = {}
     for filename in os.listdir(ldir):
         fdir = ldir+filename
+        print(fdir)
         try:
             c,m=leadsheet.parse_leadsheet(fdir)
-            totaldur = 0
-            for note in m:
-                totaldur+=note[1]
-            mseq = []
-            pseq = []
-            cseq = []
-            ckeyseq = []
-            dseq = []
             index_count = 0
             skip_count = 0
-            valid_leadsheet = True
             slot = 0
             clen = len(c)
-            if PITCH_REP == PITCH_MIDI:
-                isStart = True
-                for note in m:
-                    dur = -1
-                    if bits_or_onehot == BITS:
-                        newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                        bindur = bin(newdur)[2:]
-                        assert len(bindur) <= 7
-                        bindur = '0'*(NUM_BITS-len(bindur))+bindur
-                        dur = [int(x) for x in bindur]
-                    elif bits_or_onehot == ONE_HOT:
-                        try:
-                            #if note[1] not in DURATION_MAPPING.keys():
-                            #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                            assert note[1] <= 48
-                            dur = note[1]-1#DURATION_MAPPING[note[1]]
-                        except AssertionError:
-                            keyerror_count += 1
-                            valid_leadsheet = False
+            print(len(c))
+            print(len(m))
+            totaldur = 0
+            for n in m:
+                totaldur+=n[1]
+            print(totaldur)
+            for startIndex in range(len(m)-NOTES_PER_SEQ):
+                mseq = []
+                pseq = []
+                cseq = []
+                ckeyseq = []
+                dseq = []
+                valid_leadsheet = True
+                if PITCH_REP == PITCH_MIDI:
+                    isStart = True
+                    for note in m[startIndex:startIndex+NOTES_PER_SEQ]:
+                        dur = -1
+                        if bits_or_onehot == BITS:
+                            newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
+                            bindur = bin(newdur)[2:]
+                            assert len(bindur) <= 7
+                            bindur = '0'*(NUM_BITS-len(bindur))+bindur
+                            dur = [int(x) for x in bindur]
+                        elif bits_or_onehot == ONE_HOT:
+                            try:
+                                #if note[1] not in DURATION_MAPPING.keys():
+                                #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                                assert note[1] <= 48
+                                dur = note[1]-1#DURATION_MAPPING[note[1]]
+                            except AssertionError:
+                                keyerror_count += 1
+                                valid_leadsheet = False
+                                break
+                                if verbose:
+                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                        if isStart and note[0] != None:
+                            splist.append((note[0]-MIDI_MIN,dur))
+                            index_count += note[1]
+                            isStart = False
+                            continue
+                        elif isStart and note[0] == None:
+                            index_count += note[1]
+                            skip_count += note[1]
+                            continue
+                        cseq.append(c[index_count % clen]) # get the full chord vec for the slot
+                        ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
+
+                        if note[0] != None:
+                            assert note[0] >= MIDI_MIN
+                            assert note[0] <= MIDI_MAX
+                        restVal = MIDI_MAX+1
+                        isRest = note[0] == None
+                        nval = restVal if isRest else note[0]
+                        #if note[1] > 48:
+                        #    valid_leadsheet = False
+                        #    break
+                        actNoteVal = nval - MIDI_MIN # scale down to start at 0
+                        mseq.append(actNoteVal)
+                        dseq.append(dur)
+                        index_count+=1
+
+                        pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
+                        pval_high = 0.0 if isRest else 1-pval_low
+                        pseq.append((pval_high,pval_low))
+
+                        for _ in range(note[1]-1):
+                            index_count+=1 # skip chords for sustain
+                        #if index_count-skip_count >= SEQ_LEN:
+                        #    break
+
+                elif PITCH_REP == PITCH_INTERVAL:
+                    prevVal = None
+                    isStart = True
+                    for note in m:
+                        if bits_or_onehot == BITS:
+                            dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
+                        elif bits_or_onehot == ONE_HOT:
+                            try:
+                                if note[1] not in DURATION_MAPPING.keys():
+                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                                dur = DURATION_MAPPING[note[1]]
+                            except KeyError:
+                                keyerror_count += 1
+                                valid_leadsheet = False
+                                break
+                                if verbose:
+                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                        if isStart and note[0] != None:
+                            prevVal = note[0]
+                            splist.append((note[0]-MIDI_MIN,dur))
+                            index_count += note[1]
+                            isStart = False
+                            continue
+                        elif isStart and note[0] == None:
+                            index_count += note[1]
+                            skip_count += note[1]
+                            continue
+                        cseq.append(c[index_count])
+                        ckeyseq.append(c[index_count][0]) # get chord key for the slot
+
+                        if note[0] != None:
+                            assert note[0] >= MIDI_MIN 
+                            assert note[0] <= MIDI_MAX
+                        restVal = MAX_INTERV+1
+                        isRest = note[0] == None
+                        nval = restVal if isRest else note[0]-prevVal
+                        nval = nval - MIN_INTERV # normalize to 0
+                        prevVal = prevVal if isRest else note[0]
+                        #if note[1] > 48:
+                        #    valid_leadsheet = False
+                        #    break
+                        mseq.append(nval)
+                        if nval in notes_captured.keys():
+                            notes_captured[nval] += 1
+                        else:
+                            notes_captured[nval] = 1
+                        dseq.append(dur)
+                        index_count+=1
+
+                        midival = MIDI_MAX+1 if isRest else note[0]
+                        pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
+                        pval_high = 0.0 if isRest else 1-pval_low
+                        pseq.append((pval_high,pval_low))
+
+                        for _ in range(note[1]-1):
+                            index_count+=1
+                        if index_count >= SEQ_LEN:
                             break
-                            if verbose:
-                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                    if isStart and note[0] != None:
-                        splist.append((note[0]-MIDI_MIN,dur))
-                        index_count += note[1]
-                        isStart = False
-                        continue
-                    elif isStart and note[0] == None:
-                        index_count += note[1]
-                        skip_count += note[1]
-                        continue
-                    cseq.append(c[index_count]) # get the full chord vec for the slot
-                    ckeyseq.append(c[index_count][0]) # get chord key for the slot
 
-                    if note[0] != None:
-                        assert note[0] >= MIDI_MIN
-                        assert note[0] <= MIDI_MAX
-                    restVal = MIDI_MAX+1
-                    isRest = note[0] == None
-                    nval = restVal if isRest else note[0]
-                    #if note[1] > 48:
-                    #    valid_leadsheet = False
-                    #    break
-                    actNoteVal = nval - MIDI_MIN # scale down to start at 0
-                    mseq.append(actNoteVal)
-                    dseq.append(dur)
-                    index_count+=1
+                elif PITCH_REP == PITCH_CHORD:
+                    for note in m:
+                        cseq = c[index_count]
+                        ckey = c[index_count][0]
+                        ckeyseq.append(ckey) # get chord key for the slot
+                        index_count+=1
 
-                    pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
-                    pval_high = 0.0 if isRest else 1-pval_low
-                    pseq.append((pval_high,pval_low))
-
-                    for _ in range(note[1]-1):
-                        index_count+=1 # skip chords for sustain
-                    if index_count-skip_count >= SEQ_LEN:
-                        break
-
-            elif PITCH_REP == PITCH_INTERVAL:
-                prevVal = None
-                isStart = True
-                for note in m:
-                    if bits_or_onehot == BITS:
-                        dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                    elif bits_or_onehot == ONE_HOT:
-                        try:
-                            if note[1] not in DURATION_MAPPING.keys():
-                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                        if note[0] != None:
+                            assert note[0] >= MIDI_MIN 
+                            assert note[0] <= MIDI_MAX
+                        restVal = 12 # pitches go 0-11
+                        isRest = note[0] == None
+                        nval = restVal if isRest else (note[0]-ckey) % 12
+                        #if isRest and note[1] > 24 or note[1] > 48:
+                        #    valid_leadsheet = False
+                        #    break
+                        if bits_or_onehot == BITS:
+                            dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
+                        elif bits_or_onehot == ONE_HOT:
                             dur = DURATION_MAPPING[note[1]]
-                        except KeyError:
-                            keyerror_count += 1
-                            valid_leadsheet = False
+                        mseq.append(nval)
+                        dseq.append(dur)
+
+                        midival = MIDI_MAX+1 if isRest else note[0]
+                        pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
+                        pval_high = 0.0 if isRest else 1-pval_low
+                        pseq.append((pval_high,pval_low))
+
+                        for _ in range(note[1]-1):
+                            index_count+=1
+                        if index_count >= SEQ_LEN:
                             break
-                            if verbose:
-                                print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                    if isStart and note[0] != None:
-                        prevVal = note[0]
-                        splist.append((note[0]-MIDI_MIN,dur))
-                        index_count += note[1]
-                        isStart = False
-                        continue
-                    elif isStart and note[0] == None:
-                        index_count += note[1]
-                        skip_count += note[1]
-                        continue
-                    cseq.append(c[index_count])
-                    ckeyseq.append(c[index_count][0]) # get chord key for the slot
 
-                    if note[0] != None:
-                        assert note[0] >= MIDI_MIN 
-                        assert note[0] <= MIDI_MAX
-                    restVal = MAX_INTERV+1
-                    isRest = note[0] == None
-                    nval = restVal if isRest else note[0]-prevVal
-                    nval = nval - MIN_INTERV # normalize to 0
-                    prevVal = prevVal if isRest else note[0]
-                    #if note[1] > 48:
-                    #    valid_leadsheet = False
-                    #    break
-                    mseq.append(nval)
-                    if nval in notes_captured.keys():
-                        notes_captured[nval] += 1
-                    else:
-                        notes_captured[nval] = 1
-                    dseq.append(dur)
-                    index_count+=1
-
-                    midival = MIDI_MAX+1 if isRest else note[0]
-                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
-                    pval_high = 0.0 if isRest else 1-pval_low
-                    pseq.append((pval_high,pval_low))
-
-                    for _ in range(note[1]-1):
-                        index_count+=1
-                    if index_count >= SEQ_LEN:
-                        break
-
-            elif PITCH_REP == PITCH_CHORD:
-                for note in m:
-                    cseq = c[index_count]
-                    ckey = c[index_count][0]
-                    ckeyseq.append(ckey) # get chord key for the slot
-                    index_count+=1
-
-                    if note[0] != None:
-                        assert note[0] >= MIDI_MIN 
-                        assert note[0] <= MIDI_MAX
-                    restVal = 12 # pitches go 0-11
-                    isRest = note[0] == None
-                    nval = restVal if isRest else (note[0]-ckey) % 12
-                    #if isRest and note[1] > 24 or note[1] > 48:
-                    #    valid_leadsheet = False
-                    #    break
-                    if bits_or_onehot == BITS:
-                        dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                    elif bits_or_onehot == ONE_HOT:
-                        dur = DURATION_MAPPING[note[1]]
-                    mseq.append(nval)
-                    dseq.append(dur)
-
-                    midival = MIDI_MAX+1 if isRest else note[0]
-                    pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
-                    pval_high = 0.0 if isRest else 1-pval_low
-                    pseq.append((pval_high,pval_low))
-
-                    for _ in range(note[1]-1):
-                        index_count+=1
-                    if index_count >= SEQ_LEN:
-                        break
-
-            if not valid_leadsheet:
-                bigrest_count += 1
-                continue
-            numParsed += 1
-            clist.append(c)
-            mlist.append(mseq)
-            if max_length < len(mseq):
-                max_length = len(mseq)
-            poslist.append(pseq)
-            ckeylist.append(ckeyseq)
-            namelist.append(filename)
-            dlist.append(dseq)
+                if not valid_leadsheet:
+                    bigrest_count += 1
+                    continue
+                numParsed += 1
+                clist.append(c)
+                mlist.append(mseq)
+                if max_length < len(mseq):
+                    max_length = len(mseq)
+                poslist.append(pseq)
+                ckeylist.append(ckeyseq)
+                namelist.append(filename)
+                dlist.append(dseq)
         except KeyError:
             if verbose:
                 print("KEY ERROR: "+filename)

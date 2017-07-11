@@ -275,6 +275,8 @@ class RNN(object):
             gen_low = gen_low.write(i, newLow)
             gen_high = gen_high.write(i, newHigh)
 
+            next_token = tf.maximum(next_token,0)
+            next_token_dur = tf.maximum(next_token_dur,0)
             x_tp1 = tf.gather(self.g_embeddings, next_token)
             gen_o = gen_o.write(i, tf.gather(o_t, next_token))  # we only need the sampled token's probability
             gen_x = gen_x.write(i, next_token)  # indices, not embeddings
