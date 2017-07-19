@@ -233,7 +233,7 @@ class RNN(object):
 
 
             beat = tf.mod(beat_count,numBeatsInMeasure)
-            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.one_hot(beat,48,1.0,0.0)#tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             sample = samples.read(i)
             sample_dur = samples_dur.read(i)
 
@@ -289,9 +289,10 @@ class RNN(object):
             gen_x_dur = gen_x_dur.write(i, next_token_dur)  # indices, not embeddings
             dur = duration_tensor_to_beat_duration(next_token_dur)
             cpitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0,dtype=tf.int32), lambda: tf.mod(12+next_token-chordkey_vec,12))
+            newbeat_count = beat_count+dur
 
-            return i + 1, beat+dur, newPitch, next_token-prev_token, cpitch,\
-                self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],newLow,newHigh,\
+            return i + 1, newbeat_count, newPitch, next_token-prev_token, cpitch,\
+                self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],newLow,newHigh,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                 x_tp1, a_tp1, firstH, h_tm1s, h_tm1_dur, h_tm1s_dur,\
@@ -353,7 +354,7 @@ class RNN(object):
             low = inputs_lows[i]
             high = inputs_highs[i]
             beat = tf.mod(beat_count,numBeatsInMeasure)
-            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.one_hot(beat,48,1.0,0.0)#tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             x_t = inputs.read(i)
             next_token = notes[i]
             a_t = inputs_dur.read(i)
@@ -364,9 +365,10 @@ class RNN(object):
             pred = pred.write(i, y_t)
             dur = duration_tensor_to_beat_duration(next_a)
             cpitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0,dtype=tf.int32), lambda: tf.mod(12+next_token-chordkey_vec,12))
+            newbeat_count = beat_count+dur
 
-            return i + 1, beat+dur,next_token-prev_token,cpitch,\
-                self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],inputs_lows,inputs_highs,\
+            return i + 1, newbeat_count,next_token-prev_token,cpitch,\
+                self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],inputs_lows,inputs_highs,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,durs,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_dur, h_t,h_tm1_dur, pred
@@ -424,7 +426,7 @@ class RNN(object):
             x_t, a_t, h_tm1, h_tm1s, h_tm1_dur, h_tm1s_dur,
             g_predictions, g_predictions_dur):
             beat = tf.mod(beat_count,numBeatsInMeasure)
-            beatVec = tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
+            beatVec = tf.one_hot(beat,48,1.0,0.0)#tf.map_fn(lambda i : tf.to_float(tf.equal(tf.mod(beat,i),tf.constant(0,dtype=tf.int32))), beatsConsideredVec, dtype=tf.float32)
             firstH = self.g_recurrent_unit(self.emb_dim,self.emb_dim_dur, self.hidden_dim, x_t,a_t, beatVec, rep_count,a_count,prev_interval,prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high)
             #secondH = self.g_hidden(self.hidden_dim, firstH, h_tm1s)
             #firstH_dur = self.g_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t, beatVec, a_count, h_tm1_dur)
@@ -441,9 +443,10 @@ class RNN(object):
             next_token = self.x[i]
             dur = duration_tensor_to_beat_duration(next_a)
             cpitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0,dtype=tf.int32), lambda: tf.mod(12+next_token-chordkey_vec,12))
+            newbeat_count = beat_count+dur
 
-            return i + 1, beat+dur, next_token-prev_token, cpitch,\
-                self.chordKeys_onehot[(i+dur) % self.sequence_length],self.chordNotes[(i+dur) % self.sequence_length],self.lows[i],self.highs[i],\
+            return i + 1, newbeat_count, next_token-prev_token, cpitch,\
+                self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],self.lows[i],self.highs[i],\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,\
                 x_tp1, a_tp1, firstH,h_tm1s,h_tm1_dur,h_tm1s_dur,\
@@ -473,7 +476,7 @@ class RNN(object):
                 logits=self.d_gen_predictions, labels=tf.zeros([self.sequence_length])))
         self.d_real_loss = tf.reduce_mean(
             tf.nn.sigmoid_cross_entropy_with_logits(
-                logits=self.d_real_predictions, labels=tf.ones([self.sequence_length])*0.9))
+                logits=self.d_real_predictions, labels=tf.ones([self.sequence_length])))
 
         # calculate generator rewards and loss
         decays = tf.exp(tf.log(self.reward_gamma) * tf.to_float(tf.range(self.sequence_length)))
@@ -729,9 +732,9 @@ class GRU(RNN):
         W_rcpitch = tf.Variable(self.init_matrix([hidden_dim, 12]))
         W_zcpitch = tf.Variable(self.init_matrix([hidden_dim, 12]))
         W_hcpitch = tf.Variable(self.init_matrix([hidden_dim, 12]))
-        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
-        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
-        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, self.lenBeatVec]))
+        W_rbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
+        W_zbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
+        W_hbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
         W_ra = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
         W_za = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
         W_ha = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
@@ -765,7 +768,7 @@ class GRU(RNN):
             prev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,1.0,0.0),[12,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
             a_t = tf.reshape(a_t, [emb_dim_dur, 1])
-            beatVec = tf.reshape(beatVec, [self.lenBeatVec, 1])
+            beatVec = tf.reshape(beatVec, [48,1])#self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
                 tf.matmul(W_racount, a_count) + \

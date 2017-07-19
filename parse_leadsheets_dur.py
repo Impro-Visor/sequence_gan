@@ -163,7 +163,7 @@ def parseLeadsheets(ldir,verbose=False):
                                 if verbose:
                                     print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                         if isStart and note[0] != None:
-                            splist.append((note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0]))
+                            splist_tuple = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0])
                             index_count += note[1]
                             isStart = False
                             continue
@@ -297,18 +297,27 @@ def parseLeadsheets(ldir,verbose=False):
                         if index_count >= SEQ_LEN:
                             break
 
-                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30:
+                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30 or index_count > clen:
                     bigrest_count += 1
                     continue
-                numParsed += 1
-                clist.append(c)
-                mlist.append(mseq)
-                if max_length < len(mseq):
-                    max_length = len(mseq)
-                poslist.append(pseq)
-                ckeylist.append(ckeyseq)
-                namelist.append(filename)
-                dlist.append(dseq)
+
+                for keydiff in range(12):
+                    newc = [((x[0]+keydiff) % 12,x[1]) for x in c]
+                    newm = [(note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) for note in mseq]
+                    newp = [((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newm]
+                    newsplist_tuple = list(splist_tuple)
+                    newsplist_tuple[0] = newsplist_tuple[0]+keydiff if (newsplist_tuple[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple[0]+keydiff-12
+                    newsplist_tuple[3] = (newsplist_tuple[3]+keydiff) % 12
+                    numParsed += 1
+                    clist.append(newc)
+                    mlist.append(newm)
+                    if max_length < len(mseq):
+                        max_length = len(mseq)
+                    poslist.append(newp)
+                    ckeylist.append(ckeyseq)
+                    namelist.append(filename)
+                    dlist.append(dseq)
+                    splist.append(newsplist_tuple)
         except KeyError:
             if verbose:
                 print("KEY ERROR: "+filename)

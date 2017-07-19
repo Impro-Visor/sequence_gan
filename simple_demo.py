@@ -93,23 +93,24 @@ if LEADSHEET_CHOICE == TRANSCRIPTIONS:
 NUM_EMB_DUR = 48#15
 EMB_DIM = 128
 EMB_DIM_DUR = 128
-HIDDEN_DIM = 300 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
+HIDDEN_DIM = 500 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
 HIDDEN_DIM_DUR = 100 # 50 has been working with 1 and 2 layers.
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 27
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
-    MAX_SEQ_LENGTH = 49
+    MAX_SEQ_LENGTH = 30
 START_TOKEN_DUR = 0
 START_TOKEN_POS_LOW = 0
 START_TOKEN_POS_HIGH = 0
 
 EPOCH_ITER = 100
 SAVE_INTERVAL = 50
+RESET_INTERVAL = 500
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline ratio.
-TRAIN_ITER = 100000  # generator/discriminator alternating
+TRAIN_ITER = EPOCH_ITER * 100000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
 G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
@@ -169,6 +170,7 @@ def get_sequences(notepath,durpath,chordpath,pospath,startppath):
     lows = [x[3] for x in all_seqs]
     highs = [x[4] for x in all_seqs]
     spseq = [x[5] for x in all_seqs]
+    print("Number of sequences: ", len(noteseqs))
     return noteseqs,durseqs,chordseqs,lows,highs,spseq
 
 def get_random_sequence(i,sequences,durseqs,chordseqs,lows,highs,spseq):
@@ -235,9 +237,9 @@ def main():
     skipG = False
     startUnsup = False
     ii = 0
+    melodyseqs,durseqs,chordseqs,lows,highs,spseq = get_sequences(NPATH,DPATH,CPATH,PPATH,SPPATH)
     for epoch in range(TRAIN_ITER // EPOCH_ITER):
         print('epoch', epoch)
-        melodyseqs,durseqs,chordseqs,lows,highs,spseq = get_sequences(NPATH,DPATH,CPATH,PPATH,SPPATH)
         ii,latest_g_loss,latest_d_loss,actual_seq, actual_seq_dur, \
         sup_gen_x, sup_gen_x_dur, unsup_gen_x, unsup_gen_x_dur, \
         supervised_chord_keys, supervised_chord_keys_onehot, supervised_chord_notes, supervised_sps, supervised_sps_dur, supervised_sps_beat, \
@@ -317,6 +319,11 @@ def main():
                                 seq[k] = int(seq[k])
             with open("generations_g"+str(ecount)+".json",'w') as dumpfile:
                 json.dump(generations,dumpfile)
+        if epoch % RESET_INTERVAL == 0:
+            actuals = []
+            sups = []
+            unsups = []
+            generations = []
 
 if __name__ == '__main__':
     test_sequence_definition()
