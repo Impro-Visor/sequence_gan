@@ -803,7 +803,7 @@ class GRU(RNN):
                 tf.matmul(W_hlow, low) + \
                 tf.matmul(W_hhigh, high) + \
                 tf.matmul(W_hbeat, beatVec) + \
-                tf.matmul(W_za, a_t) + \
+                tf.matmul(W_ha, a_t) + \
                 tf.matmul(W_hx, x_t) + \
                 tf.matmul(U_hh, r * h_tm1))
             h_t = (1 - z) * h_tm1 + z * h_tilda
