@@ -8,7 +8,7 @@ import random
 
 def train_epoch(sess, trainable_model, num_iter,
                 proportion_supervised, g_steps, d_steps,
-                next_sequence, sequences, durseqs, chordseqs, lows,highs,spseq, verify_sequence=None,
+                next_sequence, next_sequence_lengths, sequences, durseqs, chordseqs, lows,highs,spseq, verify_sequence=None,
                 words=None,
                 proportion_generated=0.5,
                 skipDiscriminator=False,
@@ -45,6 +45,7 @@ def train_epoch(sess, trainable_model, num_iter,
     supervised_sp = None
     supervised_sp_dur = None
     supervised_sp_beat = None
+    supervised_lengths = None
     unsupervised_gen_x = None
     unsupervised_gen_x_dur = None
     unsupervised_chord_key = None
@@ -53,6 +54,7 @@ def train_epoch(sess, trainable_model, num_iter,
     unsupervised_sp = None
     unsupervised_sp_dur = None
     unsupervised_sp_beat = None
+    unsupervised_lengths = None
     actual_seq = None
     actual_seq_dur = None
     print('running %d iterations with %d g steps and %d d steps' % (num_iter, g_steps, d_steps))
@@ -70,7 +72,9 @@ def train_epoch(sess, trainable_model, num_iter,
                     supervised_sp_beat = start_beat
                     actual_seq = seq
                     actual_seq_dur = seq_dur
-                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    lengths = next_sequence_lengths(sequence_length)
+                    supervised_lengths = lengths
+                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
                     supervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
                         try:
@@ -90,8 +94,10 @@ def train_epoch(sess, trainable_model, num_iter,
                     unsupervised_sp = start_pitch
                     unsupervised_sp_dur = start_duration
                     unsupervised_sp_beat = start_beat
+                    lengths = next_sequence_lengths(sequence_length)
+                    unsupervised_lengths = lengths
                     _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_dur = \
-                        trainable_model.train_g_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                        trainable_model.train_g_step(sess,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
                     expected_rewards.append(expected_reward)
                     unsupervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
@@ -106,22 +112,26 @@ def train_epoch(sess, trainable_model, num_iter,
             for _ in range(d_steps):
                 if random.random() < proportion_generated:
                     ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
-                    _, d_loss = trainable_model.train_d_real_step(sess, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    lengths = next_sequence_lengths(sequence_length)
+                    _, d_loss = trainable_model.train_d_real_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
                     supervised_chord_key = chordkeys
                     supervised_chord_key_onehot = chordkeys_onehot
                     supervised_chord_notes = chordnotes
                     supervised_sp = start_pitch
                     supervised_sp_dur = start_duration
                     supervised_sp_beat = start_beat
+                    supervised_lengths = lengths
                 else:
                     ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
-                    _, d_loss = trainable_model.train_d_gen_step(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    lengths = next_sequence_lengths(sequence_length)
+                    _, d_loss = trainable_model.train_d_gen_step(sess,lengths, chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
                     unsupervised_chord_key = chordkeys
                     unsupervised_chord_key_onehot = chordkeys_onehot
                     unsupervised_chord_notes = chordnotes
                     unsupervised_sp = start_pitch
                     unsupervised_sp_dur = start_duration
                     unsupervised_sp_beat = start_beat
+                    unsupervised_lengths = lengths
                 d_losses.append(d_loss)
 
     print('epoch statistics:')
@@ -135,8 +145,29 @@ def train_epoch(sess, trainable_model, num_iter,
         print(None)
         print(None)
     else:
-        print([supervised_sp] + actual_seq_print,)
-        print([supervised_sp_dur] + actual_seq_dur)
+        supxstr ="["+ str(supervised_sp)
+        supdstr ="["+ str(supervised_sp_dur)
+        ec = 0
+        for l in supervised_lengths:
+            supxstr += ", ("
+            supdstr += ", ("
+            first = True
+            for _ in range(l):
+                if not first:
+                    supxstr += ", "
+                    supdstr += ", "
+                first = False
+                supxstr += str(actual_seq_print[ec])
+                supdstr += str(actual_seq_dur[ec])
+                ec += 1
+            supxstr += ")"
+            supdstr += ")"
+        supxstr += "]"
+        supdstr += "]"
+        print(supxstr)
+        print(supdstr)
+        #print([supervised_sp] + actual_seq_print,)
+        #print([supervised_sp_dur] + actual_seq_dur)
     print('>>>> sampled generations (supervised, unsupervised):',)
     sup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in supervised_gen_x] if supervised_gen_x is not None else None
     sup_gen_x_dur = [words[x] if words else x for x in supervised_gen_x_dur] if supervised_gen_x_dur is not None else None
@@ -144,16 +175,58 @@ def train_epoch(sess, trainable_model, num_iter,
         print(None)
         print(None)
     else:
-        print([supervised_sp] + sup_gen_x,)
-        print([supervised_sp_dur] + sup_gen_x_dur,)
+        supxstr ="["+ str(supervised_sp)
+        supdstr ="["+ str(supervised_sp_dur)
+        ec = 0
+        for l in supervised_lengths:
+            supxstr += ", ("
+            supdstr += ", ("
+            first = True
+            for _ in range(l):
+                if not first:
+                    supxstr += ", "
+                    supdstr += ", "
+                first = False
+                supxstr += str(sup_gen_x[ec])
+                supdstr += str(sup_gen_x_dur[ec])
+                ec += 1
+            supxstr += ")"
+            supdstr += ")"
+        supxstr += "]"
+        supdstr += "]"
+        print(supxstr)
+        print(supdstr)
+        #print([supervised_sp] + sup_gen_x,)
+        #print([supervised_sp_dur] + sup_gen_x_dur,)
     unsup_gen_x = [words[x]- note_adjust if words else x- note_adjust for x in unsupervised_gen_x] if unsupervised_gen_x is not None else None
     unsup_gen_x_dur = [words[x] if words else x for x in unsupervised_gen_x_dur] if unsupervised_gen_x_dur is not None else None
     if unsup_gen_x == None:
         print(None)
         print(None)
     else:
-        print([unsupervised_sp] + unsup_gen_x,)
-        print([unsupervised_sp_dur] + unsup_gen_x_dur)
+        unsupxstr ="["+ str(unsupervised_sp)
+        unsupdstr ="["+ str(unsupervised_sp_dur)
+        ec = 0
+        for l in supervised_lengths:
+            unsupxstr += ", ("
+            unsupdstr += ", ("
+            first = True
+            for _ in range(l):
+                if not first:
+                    unsupxstr += ", "
+                    unsupdstr += ", "
+                first = False
+                unsupxstr += str(unsup_gen_x[ec])
+                unsupdstr += str(unsup_gen_x_dur[ec])
+                ec += 1
+            unsupxstr += ")"
+            unsupdstr += ")"
+        unsupxstr += "]"
+        unsupdstr += "]"
+        print(unsupxstr)
+        print(unsupdstr)
+        #print([unsupervised_sp] + unsup_gen_x,)
+        #print([unsupervised_sp_dur] + unsup_gen_x_dur)
     print('>>>> expected rewards:', np.mean(expected_rewards, axis=0))
     return ii,g_loss,d_loss,actual_seq_print, actual_seq_dur, sup_gen_x, sup_gen_x_dur, unsup_gen_x, unsup_gen_x_dur, \
         supervised_chord_key, supervised_chord_key_onehot, supervised_chord_notes,supervised_sp,supervised_sp_dur,supervised_sp_beat,\

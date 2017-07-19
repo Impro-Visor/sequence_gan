@@ -95,12 +95,16 @@ EMB_DIM = 128
 EMB_DIM_DUR = 128
 HIDDEN_DIM = 500 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
 HIDDEN_DIM_DUR = 100 # 50 has been working with 1 and 2 layers.
+HIDDEN_DIM_B = 50
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
+MAX_BLOCK_LENGTH = 16
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 27
+    MAX_BLOCK_LENGTH = 4
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MAX_SEQ_LENGTH = 30
+    MAX_BLOCK_LENGTH = 4
 START_TOKEN_DUR = 0
 START_TOKEN_POS_LOW = 0
 START_TOKEN_POS_HIGH = 0
@@ -119,8 +123,8 @@ SEED = 88
 
 def get_trainable_model():
     return model.GRU(
-        NUM_EMB, NUM_EMB_DUR, EMB_DIM, EMB_DIM_DUR, HIDDEN_DIM, HIDDEN_DIM_DUR,NUMBER_HIDDEN_LAYERS,
-        MAX_SEQ_LENGTH, START_TOKEN, START_TOKEN_DUR, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
+        NUM_EMB, NUM_EMB_DUR, EMB_DIM, EMB_DIM_DUR, HIDDEN_DIM, HIDDEN_DIM_DUR, HIDDEN_DIM_B, NUMBER_HIDDEN_LAYERS,
+        MAX_SEQ_LENGTH, MAX_BLOCK_LENGTH, START_TOKEN, START_TOKEN_DUR, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
         learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX,ENCODING=ENCODING)
 
 
@@ -197,6 +201,14 @@ def get_random_sequence(i,sequences,durseqs,chordseqs,lows,highs,spseq):
     start_chordkey = spseq[i][3]
     return i,notes,durs,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey
 
+def get_random_sequence_lengths(sequence_length):
+    return list(decompose_length(sequence_length))
+
+def decompose_length(sequence_length):
+    while sequence_length > 0:
+        length = random.randint(1,min(MAX_BLOCK_LENGTH,sequence_length))
+        yield length
+        sequence_length -= length
 
 def test_sequence_definition():
     """
@@ -247,7 +259,7 @@ def main():
             sess, trainable_model, EPOCH_ITER,
             proportion_supervised=proportion_supervised,
             g_steps=G_STEPS, d_steps=D_STEPS,
-            next_sequence=get_random_sequence,
+            next_sequence=get_random_sequence,next_sequence_lengths=get_random_sequence_lengths,
             sequences=melodyseqs,durseqs=durseqs,chordseqs=chordseqs,lows=lows,highs=highs,spseq=spseq,
             verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG, note_adjust=NOTEADJUST, ii=ii)
         actuals.append([actual_seq,actual_seq_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps, supervised_sps_dur, supervised_sps_beat])
@@ -276,7 +288,8 @@ def main():
         #keyshift = random.randint(1,7)
         #for i in range(len(chordkeys)):
             #chordkeys[i] = (chordkeys[i]+keyshift) % 12
-        gen_x, gen_x_dur = trainable_model.generate(sess,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+        lengths = get_random_sequence_lengths(sequence_length)
+        gen_x, gen_x_dur = trainable_model.generate(sess,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
         gen_x = [x for x in gen_x]
         gen_x_dur = [x for x in gen_x_dur]
         generations.append([gen_x,gen_x_dur,chordnotes,chordkeys,chordkeys_onehot,start_pitch,start_duration,start_beat])
