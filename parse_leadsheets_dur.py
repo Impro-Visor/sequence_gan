@@ -140,6 +140,7 @@ def parseLeadsheets(ldir,verbose=False):
                 valid_leadsheet = True
                 if PITCH_REP == PITCH_MIDI:
                     isStart = True
+                    startcindex = index_count
                     while note_count < lenm:
                         note = m[note_count]
                         note_count += 1
@@ -296,13 +297,15 @@ def parseLeadsheets(ldir,verbose=False):
                             index_count+=1
                         if index_count >= SEQ_LEN:
                             break
-
-                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30:
+                totaldur = 0
+                for dur in dseq:
+                    totaldur += dur
+                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30: #or index_count > clen:
                     bigrest_count += 1
                     continue
 
                 for keydiff in range(12):
-                    newc = [((x[0]+keydiff) % 12,x[1]) for x in c]
+                    newc = [((x[0]+keydiff) % 12,x[1]) for x in cseq]
                     newm = [(note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) for note in mseq]
                     newp = [((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newm]
                     newsplist_tuple = list(splist_tuple)

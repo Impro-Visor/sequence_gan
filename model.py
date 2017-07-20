@@ -287,7 +287,7 @@ class RNN(object):
                 newbeat_count = beat_count+dur
 
                 return i + 1, seqindex+1, newbeat_count, newPitch, newInterval, cpitch,\
-                    self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],newLow,newHigh,\
+                    self.chordKeys_onehot[seqindex % self.sequence_length],self.chordNotes[seqindex % self.sequence_length],newLow,newHigh,\
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                     x_tp1, a_tp1, firstH, block_input,\
@@ -505,7 +505,7 @@ class RNN(object):
             newbeat_count = beat_count+dur
 
             return i + 1, newbeat_count,next_token-prev_token,cpitch,\
-                self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],inputs_lows,inputs_highs,\
+                self.chordKeys_onehot[seqindex % self.sequence_length],self.chordNotes[seqindex % self.sequence_length],inputs_lows,inputs_highs,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,durs,\
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_dur, h_t,h_tm1_dur, pred
@@ -607,7 +607,7 @@ class RNN(object):
                 newbeat_count = beat_count+dur
 
                 return i + 1, seqindex+1, newbeat_count, newPitch, newInterval, cpitch,\
-                    self.chordKeys_onehot[newbeat_count],self.chordNotes[newbeat_count],self.lows[seqindex],self.highs[seqindex],\
+                    self.chordKeys_onehot[seqindex % self.sequence_length],self.chordNotes[seqindex % self.sequence_length],self.lows[seqindex % self.sequence_length],self.highs[seqindex % self.sequence_length],\
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                     x_tp1, a_tp1, firstH, block_input,\
