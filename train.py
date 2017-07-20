@@ -207,7 +207,7 @@ def train_epoch(sess, trainable_model, num_iter,
         unsupxstr ="["+ str(unsupervised_sp)
         unsupdstr ="["+ str(unsupervised_sp_dur)
         ec = 0
-        for l in supervised_lengths:
+        for l in unsupervised_lengths:
             unsupxstr += ", ("
             unsupdstr += ", ("
             first = True

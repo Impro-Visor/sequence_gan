@@ -297,7 +297,7 @@ def parseLeadsheets(ldir,verbose=False):
                         if index_count >= SEQ_LEN:
                             break
 
-                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30 or index_count > clen:
+                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30:
                     bigrest_count += 1
                     continue
 

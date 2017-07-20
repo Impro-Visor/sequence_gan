@@ -117,7 +117,7 @@ SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline rati
 TRAIN_ITER = EPOCH_ITER * 100000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
-G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
+G_LOSS_BOUNDARY = 2.6 # how far the supervised trainer must reach
 LEARNING_RATE = 1e-3 * MAX_SEQ_LENGTH # 1e-3 is stable-ish, 1e-2 oscillates, 1e-4 is slow
 SEED = 88
 
