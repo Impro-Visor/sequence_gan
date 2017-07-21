@@ -86,8 +86,8 @@ elif EXPERT == INTERVAL:
     MIDI_MAX = 14 # highest interval value found in trainingset
     START_TOKEN = 0
 if LEADSHEET_CHOICE == TRANSCRIPTIONS:
-    MIDI_MIN = 46#44#55
-    MIDI_MAX = 96#106#84
+    MIDI_MIN = 48#46#44#55
+    MIDI_MAX = 89#96#106#84
     NUM_EMB = MIDI_MAX-MIDI_MIN+2
     START_TOKEN = 0
 NUM_EMB_DUR = 48#15
@@ -98,13 +98,15 @@ HIDDEN_DIM_DUR = 100 # 50 has been working with 1 and 2 layers.
 HIDDEN_DIM_B = 50
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
+MIN_BLOCK_LENGTH = 1
 MAX_BLOCK_LENGTH = 16
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 27
     MAX_BLOCK_LENGTH = 4
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MAX_SEQ_LENGTH = 30
-    MAX_BLOCK_LENGTH = 4
+    MIN_BLOCK_LENGTH = 2
+    MAX_BLOCK_LENGTH = 2
 START_TOKEN_DUR = 0
 START_TOKEN_POS_LOW = 0
 START_TOKEN_POS_HIGH = 0
@@ -117,7 +119,7 @@ SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline rati
 TRAIN_ITER = EPOCH_ITER * 100000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
-G_LOSS_BOUNDARY = 2.6 # how far the supervised trainer must reach
+G_LOSS_BOUNDARY = 2.0 # how far the supervised trainer must reach
 LEARNING_RATE = 1e-3 * MAX_SEQ_LENGTH # 1e-3 is stable-ish, 1e-2 oscillates, 1e-4 is slow
 SEED = 88
 
@@ -206,7 +208,7 @@ def get_random_sequence_lengths(sequence_length):
 
 def decompose_length(sequence_length):
     while sequence_length > 0:
-        length = random.randint(1,min(MAX_BLOCK_LENGTH,sequence_length))
+        length = min(random.randint(MIN_BLOCK_LENGTH,MAX_BLOCK_LENGTH),sequence_length)
         yield length
         sequence_length -= length
 

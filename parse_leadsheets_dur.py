@@ -36,8 +36,8 @@ MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
 if USING_TRANSCRIPTIONS:
-    MIDI_MIN = 46#44#55
-    MIDI_MAX = 96#106#84
+    MIDI_MIN = 48#46#44#55
+    MIDI_MAX = 89#96#106#84
     NUM_NOTES = MIDI_MAX-MIDI_MIN+1
 
 SEQ_LEN = 96
@@ -156,7 +156,7 @@ def parseLeadsheets(ldir,verbose=False):
                                 #if note[1] not in DURATION_MAPPING.keys():
                                 #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                                 assert note[1] <= 48
-                                dur = note[1]-1#DURATION_MAPPING[note[1]]
+                                dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
                             except AssertionError:
                                 keyerror_count += 1
                                 valid_leadsheet = False
