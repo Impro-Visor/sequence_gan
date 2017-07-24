@@ -63,7 +63,7 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipGenerator:
             for _ in range(g_steps):
                 if random.random() < proportion_supervised:
-                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
+                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     supervised_chord_key = chordkeys
                     supervised_chord_key_onehot = chordkeys_onehot
                     supervised_chord_notes = chordnotes
@@ -74,7 +74,7 @@ def train_epoch(sess, trainable_model, num_iter,
                     actual_seq_dur = seq_dur
                     lengths = next_sequence_lengths(sequence_length)
                     supervised_lengths = lengths
-                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    _, g_loss, g_pred, g_pred_dur = trainable_model.pretrain_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
                     supervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
                         try:
@@ -87,7 +87,7 @@ def train_epoch(sess, trainable_model, num_iter,
                         supervised_correct_generation.append(
                             verify_sequence(supervised_gen_x))
                 else:
-                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
+                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     unsupervised_chord_key = chordkeys
                     unsupervised_chord_key_onehot = chordkeys_onehot
                     unsupervised_chord_notes = chordnotes
@@ -97,7 +97,7 @@ def train_epoch(sess, trainable_model, num_iter,
                     lengths = next_sequence_lengths(sequence_length)
                     unsupervised_lengths = lengths
                     _, _, g_loss, expected_reward, unsupervised_gen_x, unsupervised_gen_x_dur = \
-                        trainable_model.train_g_step(sess,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                        trainable_model.train_g_step(sess,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
                     expected_rewards.append(expected_reward)
                     unsupervised_g_losses.append(g_loss)
                     if np.isnan(g_loss):
@@ -111,9 +111,9 @@ def train_epoch(sess, trainable_model, num_iter,
         if not skipDiscriminator:
             for _ in range(d_steps):
                 if random.random() < proportion_generated:
-                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
+                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     lengths = next_sequence_lengths(sequence_length)
-                    _, d_loss = trainable_model.train_d_real_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    _, d_loss = trainable_model.train_d_real_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
                     supervised_chord_key = chordkeys
                     supervised_chord_key_onehot = chordkeys_onehot
                     supervised_chord_notes = chordnotes
@@ -122,9 +122,9 @@ def train_epoch(sess, trainable_model, num_iter,
                     supervised_sp_beat = start_beat
                     supervised_lengths = lengths
                 else:
-                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
+                    ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     lengths = next_sequence_lengths(sequence_length)
-                    _, d_loss = trainable_model.train_d_gen_step(sess,lengths, chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey)
+                    _, d_loss = trainable_model.train_d_gen_step(sess,lengths, chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
                     unsupervised_chord_key = chordkeys
                     unsupervised_chord_key_onehot = chordkeys_onehot
                     unsupervised_chord_notes = chordnotes

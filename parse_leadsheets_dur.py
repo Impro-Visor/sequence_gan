@@ -145,6 +145,7 @@ def parseLeadsheets(ldir,verbose=False):
                         note = m[note_count]
                         note_count += 1
                         dur = -1
+                        otherdur = -1
                         if bits_or_onehot == BITS:
                             newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
                             bindur = bin(newdur)[2:]
@@ -157,6 +158,7 @@ def parseLeadsheets(ldir,verbose=False):
                                 #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                                 assert note[1] <= 48
                                 dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
+                                otherdur = note[1]-1
                             except AssertionError:
                                 keyerror_count += 1
                                 valid_leadsheet = False
@@ -164,7 +166,7 @@ def parseLeadsheets(ldir,verbose=False):
                                 if verbose:
                                     print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
                         if isStart and note[0] != None:
-                            splist_tuple = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0])
+                            splist_tuple = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
                             index_count += note[1]
                             isStart = False
                             continue
