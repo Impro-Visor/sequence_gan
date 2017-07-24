@@ -270,7 +270,7 @@ class RNN(object):
                 oa_cumsum = _cumsum(oa_t, self.num_emb_dur)
                 next_token_dur = tf.maximum(tf.to_int32(tf.reduce_min(tf.where(sample_dur < oa_cumsum))),tf.constant(0,dtype=tf.int32))
                 a_tp1 = tf.gather(self.g_embeddings_dur, next_token_dur)
-                next_token_dura = tf.mod(next_token_dur + 48 - beat_count,tf.constant(48,dtype=tf.int32))
+                next_token_dura = tf.mod(next_token_dur + 48 - beat_count - 1,tf.constant(48,dtype=tf.int32))
                 dura_tp1 = tf.gather(self.g_embeddings_dura, next_token_dura)
 
                 # Calculate low and high for next note. COMPUTATION DEPENDS ON INTERVAL USAGE.
@@ -615,7 +615,7 @@ class RNN(object):
                 oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, firstH)
                 next_token_dur = self.x_dur[seqindex]
                 a_tp1 = ta_emb_x_dur.read(seqindex)
-                next_token_dura = tf.mod(next_token_dur+48-beat_count,tf.constant(48,dtype=tf.int32))
+                next_token_dura = tf.mod(next_token_dur+48-beat_count-1,tf.constant(48,dtype=tf.int32))
                 dura_tp1 = tf.gather(self.g_embeddings_dura,next_token_dura)
 
                 g_predictions = g_predictions.write(seqindex, o_t)
