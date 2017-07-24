@@ -114,24 +114,24 @@ def train_epoch(sess, trainable_model, num_iter,
                     ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     lengths = next_sequence_lengths(sequence_length)
                     _, d_loss = trainable_model.train_d_real_step(sess,lengths, seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
-                    supervised_chord_key = chordkeys
-                    supervised_chord_key_onehot = chordkeys_onehot
-                    supervised_chord_notes = chordnotes
-                    supervised_sp = start_pitch
-                    supervised_sp_dur = start_duration
-                    supervised_sp_beat = start_beat
-                    supervised_lengths = lengths
+                    #supervised_chord_key = chordkeys
+                    #supervised_chord_key_onehot = chordkeys_onehot
+                    #supervised_chord_notes = chordnotes
+                    #supervised_sp = start_pitch
+                    #supervised_sp_dur = start_duration
+                    #supervised_sp_beat = start_beat
+                    #supervised_lengths = lengths
                 else:
                     ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = next_sequence(ii,sequences,durseqs,chordseqs,lows,highs,spseq)
                     lengths = next_sequence_lengths(sequence_length)
                     _, d_loss = trainable_model.train_d_gen_step(sess,lengths, chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
-                    unsupervised_chord_key = chordkeys
-                    unsupervised_chord_key_onehot = chordkeys_onehot
-                    unsupervised_chord_notes = chordnotes
-                    unsupervised_sp = start_pitch
-                    unsupervised_sp_dur = start_duration
-                    unsupervised_sp_beat = start_beat
-                    unsupervised_lengths = lengths
+                    #unsupervised_chord_key = chordkeys
+                    #unsupervised_chord_key_onehot = chordkeys_onehot
+                    #unsupervised_chord_notes = chordnotes
+                    #unsupervised_sp = start_pitch
+                    #unsupervised_sp_dur = start_duration
+                    #unsupervised_sp_beat = start_beat
+                    #unsupervised_lengths = lengths
                 d_losses.append(d_loss)
 
     print('epoch statistics:')
