@@ -233,7 +233,7 @@ class RNN(object):
             a_count, prev_a, 
             dura_count, prev_dura,
             rep_count, prev_token,
-            x_t,a_t, dura_t, h_tm1,
+            x_t,a_t, dura_t, h_tm1,h_tm1s,
             gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,
             maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh): 
             l = lengths[ii]
@@ -249,7 +249,7 @@ class RNN(object):
                 a_count, prev_a, 
                 dura_count, prev_dura,
                 rep_count, prev_token,
-                x_t,a_t,dura_t, h_tm1,block_input,
+                x_t,a_t,dura_t, h_tm1,h_tm1s,block_input,
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura):
 
                 #beat = tf.mod(beat_count,numBeatsInMeasure)
@@ -259,14 +259,16 @@ class RNN(object):
                 
                 # Feed pitch inputs to input GRU layer of pitch RNN
                 firstH = self.g_recurrent_unit(self.emb_dim, self.emb_dim_dur, self.hidden_dim, x_t, a_t,dura_t, block_input, beatVec, rep_count, a_count, dura_count, prev_interval, prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high)
+                secondH = self.g_hidden(firstH,h_tm1s)
+
 
                 # Feed output to softmax unit to get next predicted token
-                o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, firstH)
+                o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, secondH)
                 o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
                 next_token = tf.maximum(tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum))),tf.constant(0,dtype=tf.int32))   # sample
                 x_tp1 = tf.gather(self.g_embeddings, next_token)
 
-                oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, firstH)
+                oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, secondH)
                 oa_cumsum = _cumsum(oa_t, self.num_emb_dur)
                 next_token_dur = tf.maximum(tf.to_int32(tf.reduce_min(tf.where(sample_dur < oa_cumsum))),tf.constant(0,dtype=tf.int32))
                 a_tp1 = tf.gather(self.g_embeddings_dur, next_token_dur)
@@ -302,7 +304,7 @@ class RNN(object):
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
-                    x_tp1, a_tp1, dura_tp1, firstH, block_input,\
+                    x_tp1, a_tp1, dura_tp1, firstH, secondH, block_input,\
                     gen_o, gen_x,gen_o_dur,gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura
 
             i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -310,7 +312,7 @@ class RNN(object):
             a_count, prev_a,\
             dura_count, prev_dura,\
             rep_count, prev_token,\
-            x_t,a_t,dura_t, h_tm1, block_input,\
+            x_t,a_t,dura_t, h_tm1,h_tm1s, block_input,\
             gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura = control_flow_ops.while_loop(
                 cond=lambda \
                     i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -318,7 +320,7 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count, prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, block_input,\
+                    x_t,a_t,dura_t, h_tm1,h_tm1s, block_input,\
                     gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura : i < l,
                 body=inner_rec,
                 loop_vars=(
@@ -327,7 +329,7 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count, prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, nextblockH,\
+                    x_t,a_t,dura_t, h_tm1,h_tm1s, nextblockH,\
                     gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur,block_holder_dura)
                 )
 
@@ -340,7 +342,7 @@ class RNN(object):
                 a_count, prev_a,\
                 dura_count, prev_dura,\
                 rep_count, prev_token,\
-                x_t,a_t,dura_t, h_tm1,\
+                x_t,a_t,dura_t, h_tm1,h_tm1s,\
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,\
                 maxblocklength, lengths, nextblock, nextblock_dur, nextblock_dura, nextblockH
 
@@ -349,7 +351,7 @@ class RNN(object):
         a_count, prev_a,\
         dura_count, prev_dura,\
         rep_count, prev_token,\
-        x_t,a_t,dura_t, h_tm1,\
+        x_t,a_t,dura_t, h_tm1,h_tm1s,\
         self.gen_o, self.gen_x, self.gen_o_dur, self.gen_x_dur, self.gen_low, self.gen_high,\
         maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh = control_flow_ops.while_loop(
             cond = lambda \
@@ -358,7 +360,7 @@ class RNN(object):
                 a_count, prev_a,\
                 dura_count, prev_dura,\
                 rep_count, prev_token,\
-                x_t,a_t,dura_t, h_tm1,\
+                x_t,a_t,dura_t, h_tm1,h_tm1s,\
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,\
                 maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh : ii < self.lengths_length,
             body = _newg_recurrence,
@@ -368,7 +370,7 @@ class RNN(object):
                 tf.constant(1,dtype=tf.int32),self.start_duration,
                 tf.constant(1,dtype=tf.int32),self.start_dura,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,
-                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura),self.h0,
+                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura),self.h0,self.temph0s,
                 gen_o, gen_x,gen_o_dur,gen_x_dur,gen_low, gen_high,
                 self.maxblocklength, self.lengths, tf.zeros([self.maxblocklength, self.emb_dim]), tf.zeros([self.maxblocklength, self.emb_dim_dur]), tf.zeros([self.maxblocklength, self.emb_dim_dura]), self.blockh0
                 )
@@ -582,7 +584,7 @@ class RNN(object):
             a_count, prev_a,
             dura_count, prev_dura,
             rep_count, prev_token,
-            x_t,a_t, dura_t, h_tm1,
+            x_t,a_t, dura_t, h_tm1,h_tm1s,
             g_predictions,g_predictions_dur,
             maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh): 
             l = lengths[ii]
@@ -598,7 +600,7 @@ class RNN(object):
                 a_count, prev_a,
                 dura_count, prev_dura,
                 rep_count, prev_token,
-                x_t,a_t,dura_t, h_tm1, block_input,
+                x_t,a_t,dura_t, h_tm1,h_tm1s, block_input,
                 g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura):
 
                 #beat = tf.mod(beat_count,numBeatsInMeasure)
@@ -606,13 +608,14 @@ class RNN(object):
 
                 # Feed pitch inputs to input GRU layer of pitch RNN
                 firstH = self.g_recurrent_unit(self.emb_dim, self.emb_dim_dur, self.hidden_dim, x_t, a_t,dura_t, block_input, beatVec, rep_count, a_count,dura_count, prev_interval, prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high)
+                secondH = self.g_hidden(firstH,h_tm1s)
 
                 # Feed output to softmax unit to get next predicted token
-                o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, firstH)
+                o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, secondH)
                 next_token = self.x[seqindex]
                 x_tp1 = ta_emb_x.read(seqindex)
 
-                oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, firstH)
+                oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, secondH)
                 next_token_dur = self.x_dur[seqindex]
                 a_tp1 = ta_emb_x_dur.read(seqindex)
                 next_token_dura = tf.mod(next_token_dur+48-beat_count-1,tf.constant(48,dtype=tf.int32))
@@ -637,7 +640,7 @@ class RNN(object):
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_token_dur)))+1,next_token_dur, \
                     tf.multiply(dura_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
-                    x_tp1, a_tp1, dura_tp1, firstH, block_input,\
+                    x_tp1, a_tp1, dura_tp1, firstH,secondH, block_input,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura
 
             i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -645,7 +648,7 @@ class RNN(object):
             a_count, prev_a,\
             dura_count, prev_dura,\
             rep_count, prev_token,\
-            x_t,a_t,dura_t, h_tm1, block_input,\
+            x_t,a_t,dura_t, h_tm1,h_tm1s, block_input,\
             g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura = control_flow_ops.while_loop(
                 cond=lambda \
                     i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -653,7 +656,7 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count,prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, block_input,\
+                    x_t,a_t,dura_t, h_tm1,h_tm1s, block_input,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura : i < l,
                 body=inner_rec,
                 loop_vars=(
@@ -662,7 +665,7 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count,prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, nextblockH,\
+                    x_t,a_t,dura_t, h_tm1,h_tm1s, nextblockH,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura)
                 )
 
@@ -675,7 +678,7 @@ class RNN(object):
                 a_count, prev_a,\
                 dura_count,prev_dura,\
                 rep_count, prev_token,\
-                x_t,a_t,dura_t, h_tm1,\
+                x_t,a_t,dura_t, h_tm1,h_tm1s,\
                 g_predictions,g_predictions_dur,\
                 maxblocklength, lengths, nextblock, nextblock_dur, nextblock_dura, nextblockH
 
@@ -684,7 +687,7 @@ class RNN(object):
         a_count, prev_a,\
         dura_count,prev_dura,\
         rep_count, prev_token,\
-        x_t,a_t,dura_t, h_tm1,\
+        x_t,a_t,dura_t, h_tm1,h_tm1s,\
         self.g_predictions,self.g_predictions_dur,\
         maxblocklength, lengths, prev_block, prev_block_dur,prev_block_dura, blockh = control_flow_ops.while_loop(
             cond = lambda \
@@ -693,7 +696,7 @@ class RNN(object):
                 a_count, prev_a,\
                 dura_count,prev_dura,\
                 rep_count, prev_token,\
-                x_t,a_t,dura_t, h_tm1,\
+                x_t,a_t,dura_t, h_tm1,h_tm1s,\
                 g_predictions, g_predictions_dur,\
                 maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh : ii < self.lengths_length,
             body = _newpretrain_recurrence,
@@ -703,7 +706,7 @@ class RNN(object):
                 tf.constant(1,dtype=tf.int32),self.start_duration,
                 tf.constant(1,dtype=tf.int32),self.start_dura,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,
-                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura), self.h0, 
+                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura), self.h0, self.temph0s,
                 g_predictions,g_predictions_dur,
                 self.maxblocklength, self.lengths, tf.zeros([self.maxblocklength, self.emb_dim]), tf.zeros([self.maxblocklength, self.emb_dim_dur]), tf.zeros([self.maxblocklength,self.emb_dim_dura]), self.blockh0
                 )
@@ -994,7 +997,7 @@ class GRU(RNN):
             W_rx, W_zx, W_hx,
             U_rh, U_zh, U_hh])
 
-        def unit(hidden_dim,x_t, h_tm1):
+        def unit(x_t, h_tm1):
 
             x_t = tf.reshape(x_t, [hidden_dim, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
