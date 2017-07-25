@@ -172,7 +172,11 @@ class RNN(object):
             self.d_embeddings_dur = tf.Variable(self.init_matrix([self.num_emb_dur, self.emb_dim_dur]))
             self.d_params.append(self.d_embeddings_dur)
 
-            self.d_recurrent_unit = self.create_recurrent_unit_pitch(self.emb_dim, self.emb_dim_dur, self.hidden_dim, self.d_params)  # maps h_tm1 to h_t for discriminator
+            # Embedding matrix for duration lengths
+            self.d_embeddings_dura = tf.Variable(self.init_matrix([self.num_emb_dura, self.emb_dim_dura]))
+            self.d_params.append(self.d_embeddings_dura)
+
+            self.d_recurrent_unit = self.create_recurrent_unit_pitch(self.emb_dim, self.emb_dim_dur, self.emb_dim_dura, self.hidden_dim, self.d_params)  # maps h_tm1 to h_t for discriminator
             #self.d_recurrent_unit_dur = self.create_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, self.d_params)  # maps h_tm1 to h_t for discriminator
             self.d_classifier_unit = self.create_classifier_unit(self.d_params)  # maps h_t to class prediction logits
             self.d_h0 = tf.Variable(self.init_vector([self.hidden_dim]))
@@ -506,6 +510,7 @@ class RNN(object):
         def _d_recurrence(i,beat_count,prev_interval, prev_pitch_chord,
             chordkey_vec, chordnote_vec, inputs_lows, inputs_highs,           
             a_count, prev_a, durs,
+            dura_count, prev_dura,
             rep_count, prev_token, notes, 
             inputs, inputs_dur, h_tm1, h_tm1_dur, pred):
             low = inputs_lows[i]
@@ -516,7 +521,9 @@ class RNN(object):
             next_token = notes[i]
             a_t = inputs_dur.read(i)
             next_a = durs[i]
-            h_t = self.d_recurrent_unit(self.emb_dim,self.emb_dim_dur, self.hidden_dim, x_t,a_t,beatVec, rep_count,a_count,prev_interval,prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high)
+            dura_t = tf.gather(self.d_embeddings_dura,prev_dura)
+            next_token_dura = tf.mod(next_a+48-beat_count-1,tf.constant(48,dtype=tf.int32))
+            h_t = self.d_recurrent_unit(self.emb_dim,self.emb_dim_dur, self.hidden_dim, x_t,a_t,dura_t,beatVec, rep_count,a_count,dura_count,prev_interval,prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high)
             #h_t_dur = self.d_recurrent_unit_dur(self.emb_dim_dur, self.hidden_dim_dur, a_t,beatVec, a_count, h_tm1_dur)
             y_t = self.d_classifier_unit(h_t)
             pred = pred.write(i, y_t)
@@ -527,27 +534,30 @@ class RNN(object):
             return i + 1, next_a,next_token-prev_token,cpitch,\
                 self.chordKeys_onehot[seqindex % self.sequence_length],self.chordNotes[seqindex % self.sequence_length],inputs_lows,inputs_highs,\
                 tf.multiply(a_count,tf.to_int32(tf.equal(prev_a,next_a)))+1, next_a,durs,\
+                tf.multiply(dura_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_dur, h_t,h_tm1_dur, pred
 
-        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_gen_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20: i < self.sequence_length,
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),self.start_duration, tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.gen_low.stack(),self.gen_high.stack(),
                 tf.constant(1,dtype=tf.int32), self.start_duration, self.gen_x_dur,
+                tf.constant(1,dtype=tf.int32), self.start_dura,
                 tf.constant(1,dtype=tf.int32), self.start_pitch, self.gen_x,
                 ta_emb_gen_x, ta_emb_gen_x_dur,self.d_h0,self.d_h0_dur, d_gen_predictions))
         self.d_gen_predictions = tf.reshape(
                 self.d_gen_predictions.stack(),
                 [self.sequence_length])
 
-        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
-            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18: i < self.sequence_length,
+        _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, _, self.d_real_predictions = control_flow_ops.while_loop(
+            cond=lambda i, _1, _2, _3, _4, _5, _6, _7, _8, _9, _10, _11, _12, _13, _14, _15, _16, _17, _18, _19, _20: i < self.sequence_length,
             body=_d_recurrence,
             loop_vars=(tf.constant(0, dtype=tf.int32),self.start_duration, tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.lows,self.highs,
                 tf.constant(1,dtype=tf.int32),self.start_duration,self.x_dur,
+                tf.constant(1,dtype=tf.int32),self.start_dura,
                 tf.constant(1,dtype=tf.int32),self.start_pitch,self.x,
                 ta_emb_real_x, ta_emb_real_x_dur,self.d_h0,self.d_h0_dur, d_real_predictions))
         self.d_real_predictions = tf.reshape(
@@ -1184,7 +1194,7 @@ class GRU(RNN):
         return unit
 
 
-    def create_recurrent_unit_pitch(self, emb_dim,emb_dim_dur,hidden_dim, params):
+    def create_recurrent_unit_pitch(self, emb_dim,emb_dim_dur,emb_dim_dura, hidden_dim, params):
         W_rlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hlow = tf.Variable(self.init_matrix([hidden_dim, 1]))
@@ -1197,6 +1207,9 @@ class GRU(RNN):
         W_rckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hckey = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_rduracount = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_zduracount = tf.Variable(self.init_matrix([hidden_dim, 1]))
+        W_hduracount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_racount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_zacount = tf.Variable(self.init_matrix([hidden_dim, 1]))
         W_hacount = tf.Variable(self.init_matrix([hidden_dim, 1]))
@@ -1212,6 +1225,9 @@ class GRU(RNN):
         W_rbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
         W_zbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
         W_hbeat = tf.Variable(self.init_matrix([hidden_dim, 48]))#self.lenBeatVec]))
+        W_rdura = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dura]))
+        W_zdura = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dura]))
+        W_hdura = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dura]))
         W_ra = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
         W_za = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
         W_ha = tf.Variable(self.init_matrix([hidden_dim, emb_dim_dur]))
@@ -1226,14 +1242,16 @@ class GRU(RNN):
             W_rhigh, W_zhigh, W_hhigh,
             W_rcnote, W_zcnote, W_hcnote,
             W_rckey, W_zckey, W_hckey,
+            W_rduracount, W_zduracount, W_hduracount,
             W_racount, W_zacount, W_hacount,
             W_rrepcount, W_zrepcount, W_hrepcount,
             W_rbeat, W_zbeat, W_hbeat,
+            W_rdura, W_zdura, W_hdura,
             W_ra, W_za, W_ha,
             W_rx, W_zx, W_hx,
             U_rh, U_zh, U_hh])
 
-        def unit(emb_dim,emb_dim_dur,hidden_dim,x_t,a_t,beatVec, rep_count,a_count,prev_interval,prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high):
+        def unit(emb_dim,emb_dim_dur,hidden_dim,x_t,a_t,dura_t,beatVec, rep_count,a_count,dura_count, prev_interval,prev_pitch_chord, h_tm1,chordkey_vec,chordnote_vec,low,high):
 
             high = tf.reshape(tf.to_float(high), [1,1])
             low = tf.reshape(tf.to_float(low), [1,1])
@@ -1241,14 +1259,17 @@ class GRU(RNN):
             chordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1,1])
             rep_count = tf.reshape(tf.to_float(rep_count), [1,1])
             a_count = tf.reshape(tf.to_float(a_count), [1,1])
+            dura_count = tf.reshape(tf.to_float(dura_count),[1,1])
             prev_interval = tf.reshape(tf.to_float(prev_interval),[1,1])
             prev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,1.0,0.0),[12,1])
             x_t = tf.reshape(x_t, [emb_dim, 1])
             a_t = tf.reshape(a_t, [emb_dim_dur, 1])
+            dura_t = tf.reshape(dura_t, [emb_dim_dura,1])
             beatVec = tf.reshape(beatVec, [48,1])#self.lenBeatVec, 1])
             h_tm1 = tf.reshape(h_tm1, [hidden_dim, 1])
             r = tf.sigmoid(tf.matmul(W_rrepcount, rep_count) + \
                 tf.matmul(W_racount, a_count) + \
+                tf.matmul(W_rduracount,dura_count) + \
                 tf.matmul(W_rinterval, prev_interval) + \
                 tf.matmul(W_rcpitch, prev_pitch_chord) + \
                 tf.matmul(W_rckey,chordkey_vec) + \
@@ -1256,11 +1277,13 @@ class GRU(RNN):
                 tf.matmul(W_rlow, low) + \
                 tf.matmul(W_rhigh, high) + \
                 tf.matmul(W_rbeat, beatVec) + \
+                tf.matmul(W_rdura, dura_t) + \
                 tf.matmul(W_ra, a_t) + \
                 tf.matmul(W_rx, x_t) + \
                 tf.matmul(U_rh, h_tm1))
             z = tf.sigmoid(tf.matmul(W_zrepcount, rep_count) + \
                 tf.matmul(W_zacount, a_count) + \
+                tf.matmul(W_zduracount,dura_count) + \
                 tf.matmul(W_zinterval, prev_interval) + \
                 tf.matmul(W_zcpitch, prev_pitch_chord) + \
                 tf.matmul(W_zckey,chordkey_vec) + \
@@ -1268,11 +1291,13 @@ class GRU(RNN):
                 tf.matmul(W_zlow, low) + \
                 tf.matmul(W_zhigh, high) + \
                 tf.matmul(W_zbeat, beatVec) + \
+                tf.matmul(W_zdura, dura_t) + \
                 tf.matmul(W_za, a_t) + \
                 tf.matmul(W_zx, x_t) + \
                 tf.matmul(U_zh, h_tm1))
             h_tilda = tf.tanh(tf.matmul(W_hrepcount, rep_count) + \
                 tf.matmul(W_hacount, a_count) + \
+                tf.matmul(W_hduracount,dura_count) + \
                 tf.matmul(W_hinterval, prev_interval) + \
                 tf.matmul(W_hcpitch, prev_pitch_chord) + \
                 tf.matmul(W_hckey,chordkey_vec) + \
@@ -1280,6 +1305,7 @@ class GRU(RNN):
                 tf.matmul(W_hlow, low) + \
                 tf.matmul(W_hhigh, high) + \
                 tf.matmul(W_hbeat, beatVec) + \
+                tf.matmul(W_hdura, dura_t) + \
                 tf.matmul(W_ha, a_t) + \
                 tf.matmul(W_hx, x_t) + \
                 tf.matmul(U_hh, r * h_tm1))
