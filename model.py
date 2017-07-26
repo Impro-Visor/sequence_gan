@@ -28,8 +28,10 @@ BITS = 1
 
 class RNN(object):
 
-    def __init__(self, num_emb, num_emb_dur, num_emb_dura, emb_dim, emb_dim_dur, emb_dim_dura, hidden_dim, hidden_dim_dur,hidden_dim_b, num_hidden_layers,
-                 max_sequence_length, max_block_length, start_token, start_token_dur, start_token_pos_low, start_token_pos_high,
+    def __init__(self, num_emb, num_emb_dur, num_emb_dura, 
+                 emb_dim, emb_dim_dur, emb_dim_dura, 
+                 hidden_dim,hidden_dim_b, num_hidden_layers,
+                 max_sequence_length, max_block_length,
                  learning_rate=0.01, reward_gamma=0.9,MIDI_MIN=55,MIDI_MAX=89,ENCODING=ONE_HOT):
         self.num_emb = num_emb
         self.num_emb_dur = num_emb_dur
@@ -38,14 +40,11 @@ class RNN(object):
         self.emb_dim_dur = emb_dim_dur
         self.emb_dim_dura = emb_dim_dura
         self.hidden_dim = hidden_dim
-        self.hidden_dim_dur = hidden_dim_dur
         self.hidden_dim_b = hidden_dim_b
         self.num_hidden_layers = num_hidden_layers
         self.max_sequence_length = max_sequence_length
         self.maxblocklength = max_block_length
         self.sequence_length = tf.placeholder(tf.int32,shape=[]) #sequence_length
-        self.start_token = tf.constant(start_token, dtype=tf.int32)
-        self.start_token_dur = tf.constant(start_token_dur, dtype=tf.int32)
         self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
         self.reward_gamma = reward_gamma
         self.g_params = []

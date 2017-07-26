@@ -18,7 +18,7 @@ interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 parsename = "ii-V-I_leadsheets"
 if USING_TRANSCRIPTIONS:
-    parsename = "transcriptions"
+    parsename = "majors"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -355,4 +355,3 @@ def saveLeadsheets(parsedLists,outputDirs):
 if __name__ == '__main__':
     parsedLists = parseLeadsheets(ldir,verbose=True)
     saveLeadsheets(parsedLists=parsedLists,outputDirs=outputDirList)
-    

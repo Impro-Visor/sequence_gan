@@ -32,7 +32,7 @@ if LEADSHEET_CHOICE == TWOFIVEONE:
     parsename = "ii-V-I_leadsheets"
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     print("Using Transcriptions")
-    parsename = "transcriptions"
+    parsename = "majors"
 
 expertname = ""
 NOTEADJUST = 0
@@ -74,29 +74,24 @@ print(SPPATH)
 NUM_EMB = -1
 MIDI_MIN = -1
 MIDI_MAX = -1
-START_TOKEN = -1
 if EXPERT == PITCH:
     NUM_EMB = 36 # Number of possible "characters" in the sequence. Encoding: 0-34 for note vals, 35 for rest.
     MIDI_MIN = 55 # lowest note value found in trainingset
     MIDI_MAX = 89 # highest note value found in trainingset
-    START_TOKEN = 5 # middle C
 elif EXPERT == INTERVAL:
     NUM_EMB = 29 # Min int = -13, Max int = 14. 0-27 for jumps, 28 for rest.
     MIDI_MIN = -13 # lowest interval value found in trainingset
     MIDI_MAX = 14 # highest interval value found in trainingset
-    START_TOKEN = 0
 if LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MIDI_MIN = 48#46#44#55
     MIDI_MAX = 89#96#106#84
     NUM_EMB = MIDI_MAX-MIDI_MIN+2
-    START_TOKEN = 0
 NUM_EMB_DUR = 48#15
 NUM_EMB_DURA = 48
 EMB_DIM = 128
 EMB_DIM_DUR = 128
 EMB_DIM_DURA = 128
-HIDDEN_DIM = 500 # 300 works for 1 layer, but mode collapses with multiple layers. 100 works for 2 layers. 500 has worked with ~150 epochs.
-HIDDEN_DIM_DUR = 100 # 50 has been working with 1 and 2 layers.
+HIDDEN_DIM = 500 # 100 nodes is the min.
 HIDDEN_DIM_B = 50
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
@@ -109,9 +104,6 @@ elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MAX_SEQ_LENGTH = 30
     MIN_BLOCK_LENGTH = 2
     MAX_BLOCK_LENGTH = 2
-START_TOKEN_DUR = 0
-START_TOKEN_POS_LOW = 0
-START_TOKEN_POS_HIGH = 0
 
 EPOCH_ITER = 100
 SAVE_INTERVAL = 50
@@ -128,16 +120,11 @@ SEED = 88
 
 def get_trainable_model():
     return model.GRU(
-        NUM_EMB, NUM_EMB_DUR, NUM_EMB_DURA, EMB_DIM, EMB_DIM_DUR, EMB_DIM_DURA, HIDDEN_DIM, HIDDEN_DIM_DUR, HIDDEN_DIM_B, NUMBER_HIDDEN_LAYERS,
-        MAX_SEQ_LENGTH, MAX_BLOCK_LENGTH, START_TOKEN, START_TOKEN_DUR, START_TOKEN_POS_LOW, START_TOKEN_POS_HIGH,
+        NUM_EMB, NUM_EMB_DUR, NUM_EMB_DURA, 
+        EMB_DIM, EMB_DIM_DUR, EMB_DIM_DURA, 
+        HIDDEN_DIM, HIDDEN_DIM_B, NUMBER_HIDDEN_LAYERS,
+        MAX_SEQ_LENGTH, MAX_BLOCK_LENGTH,
         learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX,ENCODING=ENCODING)
-
-
-def verify_sequence(seq):
-    """
-    Skip verification, assume dataset has valid sequences.
-    """
-    return True
 
 def get_sequences(notepath,durpath,chordpath,pospath,startppath):
     """
@@ -147,24 +134,20 @@ def get_sequences(notepath,durpath,chordpath,pospath,startppath):
     with open(notepath,'r') as notefile:
         noteseqs = json.load(notefile)
         for i in range(len(noteseqs)):
-            noteseqs[i] = noteseqs[i]#[:SEQ_LENGTH]
+            noteseqs[i] = noteseqs[i]
     durseqs = []
     with open(durpath,'r') as durfile:
         durseqs = json.load(durfile)
-        #for i in range(len(durseqs)):
-        #    durseqs[i] = durseqs[i]#[:SEQ_LENGTH]
     chordseqs = []
     with open(chordpath,'r') as chordfile:
         chordseqs = json.load(chordfile)
-        #for i in range(len(chordseqs)):
-        #    chordseqs[i] = chordseqs[i]#[:SEQ_LENGTH]
     lows = []
     highs = []
     with open(pospath, 'r') as posfile:
         posseqs = json.load(posfile)
         for posseq in posseqs:
-            low = [x[0] for x in posseq]#posseq[:SEQ_LENGTH]]
-            high = [x[1] for x in posseq]#posseq[:SEQ_LENGTH]]
+            low = [x[0] for x in posseq]
+            high = [x[1] for x in posseq]
             lows.append(low)
             highs.append(high)
     spseq = []
@@ -191,10 +174,7 @@ def get_random_sequence(i,sequences,durseqs,chordseqs,lows,highs,spseq):
     durs = durseqs[i]
     chordseq = chordseqs[i]
     chordkeys = np.array([x[0] for x in chordseq])
-    #chordkeys_temp = np.zeros((len(chordkeys),12)) # onehot encode the chord key
-    #chordkeys_temp[np.arange(len(chordkeys)),chordkeys] = 1
-    #chordkeys_temp = list(chordkeys_temp)
-    chordkeys_onehot = [x[0] for x in chordseq]#[list(x) for x in chordkeys_temp]
+    chordkeys_onehot = [x[0] for x in chordseq]
     chordkeys = [x[0] for x in chordseq]
     chordnotes = [x[1] for x in chordseq]
     low = lows[i]
@@ -216,16 +196,6 @@ def decompose_length(sequence_length):
         yield length
         sequence_length -= length
 
-def test_sequence_definition():
-    """
-    Skip verification, assume dataset has valid sequences.
-    """
-
-    #for _ in range(1000):
-    #    assert verify_sequence(get_random_sequence())
-    pass
-
-
 def main():
     random.seed(SEED)
     np.random.seed(SEED)
@@ -233,16 +203,6 @@ def main():
     trainable_model = get_trainable_model()
     sess = tf.Session()
     sess.run(tf.global_variables_initializer())
-
-
-    with open("genx_sup.txt", 'w') as supfile:
-        pass
-
-    with open("genx_unsup.txt", 'w') as supfile:
-        pass
-
-    with open("genx_act.txt", 'w') as supfile:
-        pass
 
     print('training')
     actuals = []
@@ -267,13 +227,13 @@ def main():
             g_steps=G_STEPS, d_steps=D_STEPS,
             next_sequence=get_random_sequence,next_sequence_lengths=get_random_sequence_lengths,
             sequences=melodyseqs,durseqs=durseqs,chordseqs=chordseqs,lows=lows,highs=highs,spseq=spseq,
-            verify_sequence=None,skipDiscriminator = skipD,skipGenerator = skipG, note_adjust=NOTEADJUST, ii=ii)
+            skipDiscriminator = skipD,skipGenerator = skipG, note_adjust=NOTEADJUST, ii=ii)
         actuals.append([actual_seq,actual_seq_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps, supervised_sps_dur, supervised_sps_beat])
         sups.append([sup_gen_x,sup_gen_x_dur,supervised_chord_notes,supervised_chord_keys,supervised_chord_keys_onehot, supervised_sps, supervised_sps_dur, supervised_sps_beat])
         unsups.append([unsup_gen_x,unsup_gen_x_dur,unsupervised_chord_notes,unsupervised_chord_keys,unsupervised_chord_keys_onehot, unsupervised_sps,unsupervised_sps_dur, unsupervised_sps_beat])
-        if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
-            print('###### FREEZING DISCRIMINATOR')
-            skipD = True
+        #if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
+        #    print('###### FREEZING DISCRIMINATOR')
+        #    skipD = True
         if latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY:
             startUnsup = True
         if startUnsup:
@@ -281,19 +241,8 @@ def main():
             skipD = False
             curric_count+=1
             proportion_supervised = max(SUP_BASELINE, 0.0 - CURRICULUM_RATE * curric_count)
-            #if latest_d_loss != None and latest_d_loss < 0.35:
-            #    print('##### FREEZING DISCRIMINATOR')
-            #    skipD = True
-            #if latest_d_loss != None and latest_d_loss < 0.3:
-                #print('###### FREEZING DISCRIMINATOR')
-                #skipD = True
-                #proportion_supervised = 0.1
-                #startUnsup = False
 
         ii,seq, seq_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura = get_random_sequence(ii,melodyseqs,durseqs,chordseqs,lows,highs,spseq)
-        #keyshift = random.randint(1,7)
-        #for i in range(len(chordkeys)):
-            #chordkeys[i] = (chordkeys[i]+keyshift) % 12
         lengths = get_random_sequence_lengths(sequence_length)
         gen_x, gen_x_dur = trainable_model.generate(sess,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura)
         gen_x = [x for x in gen_x]
@@ -345,5 +294,4 @@ def main():
             generations = []
 
 if __name__ == '__main__':
-    test_sequence_definition()
     main()
