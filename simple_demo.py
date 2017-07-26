@@ -116,6 +116,7 @@ START_TOKEN_POS_HIGH = 0
 EPOCH_ITER = 100
 SAVE_INTERVAL = 50
 RESET_INTERVAL = 500
+INIT_PROPORTION_SUPERVISED = 1.0
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
 SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline ratio.
 TRAIN_ITER = EPOCH_ITER * 100000  # generator/discriminator alternating
@@ -249,7 +250,7 @@ def main():
     unsups = []
     generations = []
     curric_count = 0
-    proportion_supervised = 1.0
+    proportion_supervised = INIT_PROPORTION_SUPERVISED
     skipD = False
     skipG = False
     startUnsup = False
