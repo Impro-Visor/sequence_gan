@@ -169,6 +169,14 @@ def parseLeadsheets(ldir,verbose=False):
                                 break
                                 if verbose:
                                     print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                        
+                        if note[0] != None:
+                            if note[0] > highest_note:
+                                highest_note = note[0]
+                            if note[0] < lowest_note:
+                                lowest_note = note[0]
+                            assert note[0] >= MIDI_MIN
+                            assert note[0] <= MIDI_MAX
                         if isStart0 and note[0] != None:
                             splist_tuple0 = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
                             index_count += note[1]
@@ -213,13 +221,6 @@ def parseLeadsheets(ldir,verbose=False):
                         cseq.append(c[index_count % clen]) # get the full chord vec for the slot
                         ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
 
-                        if note[0] != None:
-                            if note[0] > highest_note:
-                                highest_note = note[0]
-                            if note[0] < lowest_note:
-                                lowest_note = note[0]
-                            assert note[0] >= MIDI_MIN
-                            assert note[0] <= MIDI_MAX
                         restVal = MIDI_MAX+1
                         isRest = note[0] == None
                         nval = restVal if isRest else note[0]

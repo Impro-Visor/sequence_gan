@@ -165,6 +165,10 @@ def get_sequences(notepath,durpath,chordpath,pospath,startppath):
     lows = [x[3] for x in all_seqs]
     highs = [x[4] for x in all_seqs]
     spseq = [x[5] for x in all_seqs]
+    for nthing in spseq:
+        for blah in nthing:
+            for elem in blah:
+                assert elem >= 0
     print("Number of sequences: ", len(noteseqs))
     return noteseqs,durseqs,chordseqs,lows,highs,spseq
 
