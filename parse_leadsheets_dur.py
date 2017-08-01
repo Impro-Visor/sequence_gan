@@ -36,7 +36,7 @@ MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
 if USING_TRANSCRIPTIONS:
-    MIDI_MIN = 48#46#44#55
+    MIDI_MIN = 53#46#44#55
     MIDI_MAX = 89#96#106#84
     NUM_NOTES = MIDI_MAX-MIDI_MIN+1
 
@@ -139,8 +139,12 @@ def parseLeadsheets(ldir,verbose=False):
                 dseq = []
                 valid_leadsheet = True
                 if PITCH_REP == PITCH_MIDI:
-                    isStart = True
+                    isStart0 = True
+                    isStart1 = False
+                    isStart2 = False
+                    isStart3 = False
                     startcindex = index_count
+                    numNotes = 0
                     while note_count < lenm:
                         note = m[note_count]
                         note_count += 1
@@ -156,7 +160,7 @@ def parseLeadsheets(ldir,verbose=False):
                             try:
                                 #if note[1] not in DURATION_MAPPING.keys():
                                 #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                                assert note[1] <= 48
+                                #assert note[1] <= 48
                                 dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
                                 otherdur = note[1]-1
                             except AssertionError:
@@ -165,18 +169,46 @@ def parseLeadsheets(ldir,verbose=False):
                                 break
                                 if verbose:
                                     print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                        if isStart and note[0] != None:
-                            splist_tuple = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
+                        if isStart0 and note[0] != None:
+                            splist_tuple0 = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
                             index_count += note[1]
-                            isStart = False
+                            isStart0 = False
+                            isStart1 = True
+                            numNotes += 1
                             continue
-                        elif isStart and note[0] == None:
+                        elif isStart0 and note[0] == None:
                             index_count += note[1]
                             skip_count += note[1]
+                            continue
+                        elif isStart1:
+                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
+                            splist_tuple1 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
+                            index_count += note[1]
+                            isStart1 = False
+                            isStart2 = True
+                            numNotes += 1
+                            continue
+                        elif isStart2:
+                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
+                            splist_tuple2 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
+                            index_count += note[1]
+                            isStart2 = False
+                            isStart3 = True
+                            numNotes += 1
+                            continue
+                        elif isStart3:
+                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
+                            splist_tuple3 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
+                            index_count += note[1]
+                            isStart3 = False
+                            numNotes += 1
                             continue
 
                         if note[0] == None and note[1] >= 12:
                             break # found rest, end of phrase
+                        if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
+                            if numNotes >= 6:
+                                break
 
                         cseq.append(c[index_count % clen]) # get the full chord vec for the slot
                         ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
@@ -205,12 +237,13 @@ def parseLeadsheets(ldir,verbose=False):
 
                         for _ in range(note[1]-1):
                             index_count+=1 # skip chords for sustain
+                        numNotes += 1
                         #if index_count-skip_count >= SEQ_LEN:
                         #    break
 
                 elif PITCH_REP == PITCH_INTERVAL:
                     prevVal = None
-                    isStart = True
+                    isStart0 = True
                     for note in m:
                         if bits_or_onehot == BITS:
                             dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
@@ -225,13 +258,13 @@ def parseLeadsheets(ldir,verbose=False):
                                 break
                                 if verbose:
                                     print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                        if isStart and note[0] != None:
+                        if isStart0 and note[0] != None:
                             prevVal = note[0]
                             splist.append((note[0]-MIDI_MIN,dur))
                             index_count += note[1]
-                            isStart = False
+                            isStart0 = False
                             continue
-                        elif isStart and note[0] == None:
+                        elif isStart0 and note[0] == None:
                             index_count += note[1]
                             skip_count += note[1]
                             continue
@@ -302,7 +335,7 @@ def parseLeadsheets(ldir,verbose=False):
                 totaldur = 0
                 for dur in dseq:
                     totaldur += dur
-                if not valid_leadsheet or isStart or len(mseq) < 10 or len(mseq) > 30: #or index_count > clen:
+                if not valid_leadsheet or isStart0 or len(mseq) > 20 or len(mseq) < 10: #or len(mseq) < 10: #or len(mseq) > 30: #or index_count > clen:
                     bigrest_count += 1
                     continue
 
@@ -310,9 +343,18 @@ def parseLeadsheets(ldir,verbose=False):
                     newc = [((x[0]+keydiff) % 12,x[1]) for x in cseq]
                     newm = [(note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) for note in mseq]
                     newp = [((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newm]
-                    newsplist_tuple = list(splist_tuple)
-                    newsplist_tuple[0] = newsplist_tuple[0]+keydiff if (newsplist_tuple[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple[0]+keydiff-12
-                    newsplist_tuple[3] = (newsplist_tuple[3]+keydiff) % 12
+                    newsplist_tuple0 = list(splist_tuple0)
+                    newsplist_tuple0[0] = newsplist_tuple0[0]+keydiff if (newsplist_tuple0[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple0[0]+keydiff-12
+                    newsplist_tuple0[3] = (newsplist_tuple0[3]+keydiff) % 12
+                    newsplist_tuple1 = list(splist_tuple1)
+                    newsplist_tuple1[0] = newsplist_tuple1[0]+keydiff if (newsplist_tuple1[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple1[0]+keydiff-12
+                    newsplist_tuple1[3] = (newsplist_tuple1[3]+keydiff) % 12
+                    newsplist_tuple2 = list(splist_tuple2)
+                    newsplist_tuple2[0] = newsplist_tuple2[0]+keydiff if (newsplist_tuple2[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple2[0]+keydiff-12
+                    newsplist_tuple2[3] = (newsplist_tuple2[3]+keydiff) % 12
+                    newsplist_tuple3 = list(splist_tuple3)
+                    newsplist_tuple3[0] = newsplist_tuple3[0]+keydiff if (newsplist_tuple3[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple3[0]+keydiff-12
+                    newsplist_tuple3[3] = (newsplist_tuple3[3]+keydiff) % 12
                     numParsed += 1
                     clist.append(newc)
                     mlist.append(newm)
@@ -322,7 +364,7 @@ def parseLeadsheets(ldir,verbose=False):
                     ckeylist.append(ckeyseq)
                     namelist.append(filename)
                     dlist.append(dseq)
-                    splist.append(newsplist_tuple)
+                    splist.append((newsplist_tuple3,newsplist_tuple2,newsplist_tuple1,newsplist_tuple0))
         except KeyError:
             if verbose:
                 print("KEY ERROR: "+filename)

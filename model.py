@@ -28,22 +28,25 @@ BITS = 1
 
 class RNN(object):
 
-    def __init__(self, num_emb, num_emb_dur, num_emb_dura, 
-                 emb_dim, emb_dim_dur, emb_dim_dura, 
+    def __init__(self, num_emb, num_emb_dur, num_emb_dura, num_emb_chord,
+                 emb_dim, emb_dim_dur, emb_dim_dura, emb_dim_chord,
                  hidden_dim,hidden_dim_b, num_hidden_layers,
-                 max_sequence_length, max_block_length,
+                 max_sequence_length, max_block_length, endCount,
                  learning_rate=0.01, reward_gamma=0.9,MIDI_MIN=55,MIDI_MAX=89,ENCODING=ONE_HOT):
         self.num_emb = num_emb
         self.num_emb_dur = num_emb_dur
         self.num_emb_dura = num_emb_dura
+        self.num_emb_chord = num_emb_chord
         self.emb_dim = emb_dim
         self.emb_dim_dur = emb_dim_dur
         self.emb_dim_dura = emb_dim_dura
+        self.emb_dim_chord = emb_dim_chord
         self.hidden_dim = hidden_dim
         self.hidden_dim_b = hidden_dim_b
         self.num_hidden_layers = num_hidden_layers
         self.max_sequence_length = max_sequence_length
         self.maxblocklength = max_block_length
+        self.endCount = endCount
         self.sequence_length = tf.placeholder(tf.int32,shape=[]) #sequence_length
         self.learning_rate = tf.Variable(float(learning_rate), trainable=False)
         self.reward_gamma = reward_gamma
@@ -75,23 +78,30 @@ class RNN(object):
                                     + 1 # low
                                     + 1 # high
                                     + 12 # chord notes
-                                    + 1 # chord key
+                                    + self.emb_dim_chord # chord key
                                     + 1 # acount
                                     + 1 # duracount
                                     + 1 # repcount
                                     + 1 # prev interval
                                     + 12 # prev chord pitch
-                                    + self.hidden_dim_b # block
-                                    + 48 # beat
-                                    + self.emb_dim_dur # a
+                                    #+ self.hidden_dim_b # block
+                                    #+ 48 # beat
+                                    + self.endCount # countdown till end of sequence
+                                    + self.emb_dim_dur # a0
+                                    + self.emb_dim_dur # a1
+                                    + self.emb_dim_dur # a2
+                                    + self.emb_dim_dur # a3
                                     + self.emb_dim_dura # dura
-                                    + self.emb_dim # x
+                                    + self.emb_dim # x0
+                                    + self.emb_dim # x1
+                                    + self.emb_dim # x2
+                                    + self.emb_dim # x3
                                     + self.hidden_dim # h
                                     + self.hidden_dim # c, peephole
                                     )
         self.num_inputs_block = self.num_features_block - self.hidden_dim - self.hidden_dim # - h - c
 
-        self.num_features_noblock = self.num_features_block - self.hidden_dim_b
+        self.num_features_noblock = self.num_features_block# - self.hidden_dim_b
         self.num_inputs_noblock = self.num_features_noblock - self.hidden_dim - self.hidden_dim # - h - c
 
         with tf.variable_scope('generator'):
@@ -106,6 +116,10 @@ class RNN(object):
             # Embedding matrix for duration lengths
             self.g_embeddings_dura = tf.Variable(self.init_matrix([self.num_emb_dura,self.emb_dim_dura]))
             self.g_params.append(self.g_embeddings_dur)
+
+            # Embedding matrix for chord keys
+            self.g_embeddings_chord = tf.Variable(self.init_matrix([self.num_emb_chord,self.emb_dim_chord]))
+            self.g_params.append(self.g_embeddings_chord)
 
             # Recurrent units mapping input to h_t
             self.g_recurrent_unit_miniseq = self.create_lstm_layer(self.hidden_dim_b, self.num_features_miniseq, self.g_params)
@@ -128,6 +142,10 @@ class RNN(object):
             # Embedding matrix for duration lengths
             self.d_embeddings_dura = tf.Variable(self.init_matrix([self.num_emb_dura, self.emb_dim_dura]))
             self.d_params.append(self.d_embeddings_dura)
+
+            # Embedding matrix for chord keys
+            self.d_embeddings_chord = tf.Variable(self.init_matrix([self.num_emb_chord,self.emb_dim_chord]))
+            self.d_params.append(self.d_embeddings_chord)
 
             self.d_recurrent_unit = self.create_lstm_layer(self.hidden_dim, self.num_features_noblock, self.d_params)
 
@@ -153,10 +171,18 @@ class RNN(object):
         self.samples = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
         self.samples_dur = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
         self.chordKeys = tf.placeholder(tf.int32, shape=[None]) # sequence of chord key values
-        self.start_pitch = tf.placeholder(tf.int32,shape=[]) # starting pitch for INTERVALs
-        self.start_duration = tf.placeholder(tf.int32,shape=[]) # starting duration
+        #self.start_pitch = tf.placeholder(tf.int32,shape=[]) # starting pitch for INTERVALs
+        self.p0 = tf.placeholder(tf.int32,shape=[]) # starting pitch
+        self.d0 = tf.placeholder(tf.int32,shape=[]) # starting duration
+        self.p1 = tf.placeholder(tf.int32,shape=[]) # starting pitch
+        self.d1 = tf.placeholder(tf.int32,shape=[]) # starting duration
+        self.p2 = tf.placeholder(tf.int32,shape=[]) # starting pitch
+        self.d2 = tf.placeholder(tf.int32,shape=[]) # starting duration
+        self.p3 = tf.placeholder(tf.int32,shape=[]) # starting pitch
+        self.d3 = tf.placeholder(tf.int32,shape=[]) # starting duration
+        #self.start_duration = tf.placeholder(tf.int32,shape=[]) # starting duration
         self.start_dura = tf.placeholder(tf.int32, shape=[]) # starting duration length
-        self.start_beat = tf.placeholder(tf.int32,shape=[]) # starting beat count
+        self.start_beat = tf.constant(0,dtype=tf.int32)#tf.placeholder(tf.int32,shape=[]) # starting beat count
         self.start_chordkey = tf.placeholder(tf.int32,shape=[]) # starting chord key
         self.chordKeys_onehot = tf.placeholder(tf.int32, shape=[None]) # sequence of chord keys, onehot
         self.chordNotes = tf.placeholder(tf.int32, shape=[None, 12]) # sequence of vectors of notes in the chord
@@ -192,24 +218,25 @@ class RNN(object):
             dura_count, prev_dura,
             rep_count, prev_token,
             x_t,a_t, dura_t, h_tm1, c_tm1,
+            x1,x2,x3,a1,a2,a3,
             gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,
             maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc): 
             l = lengths[ii]
 
-            prev_block = tf.reshape(prev_block,[self.maxblocklength*self.emb_dim])
-            prev_block_dur = tf.reshape(prev_block_dur, [self.maxblocklength*self.emb_dim_dur])
-            prev_block_dura = tf.reshape(prev_block_dura, [self.maxblocklength*self.emb_dim_dura])
+            #prev_block = tf.reshape(prev_block,[self.maxblocklength*self.emb_dim])
+            #prev_block_dur = tf.reshape(prev_block_dur, [self.maxblocklength*self.emb_dim_dur])
+            #prev_block_dura = tf.reshape(prev_block_dura, [self.maxblocklength*self.emb_dim_dura])
 
-            rblockh = tf.reshape(blockh, [self.hidden_dim_b,1])
-            rblockc = tf.reshape(blockc, [self.hidden_dim_b,1])
-            inputs_miniseq = tf.reshape(
-                tf.concat([prev_block,prev_block_dur,prev_block_dura],
-                    0), 
-                [self.num_inputs_miniseq,1])
+            #rblockh = tf.reshape(blockh, [self.hidden_dim_b,1])
+            #rblockc = tf.reshape(blockc, [self.hidden_dim_b,1])
+            #inputs_miniseq = tf.reshape(
+            #    tf.concat([prev_block,prev_block_dur,prev_block_dura],
+            #        0), 
+            #    [self.num_inputs_miniseq,1])
 
-            nextblockH,nextblockC = self.g_recurrent_unit_miniseq(rblockh,inputs_miniseq,rblockc)
-            nextblockH = tf.reshape(nextblockH, [self.hidden_dim_b])
-            nextblockC = tf.reshape(nextblockC, [self.hidden_dim_b])
+            #nextblockH,nextblockC = self.g_recurrent_unit_miniseq(rblockh,inputs_miniseq,rblockc)
+            #nextblockH = tf.reshape(nextblockH, [self.hidden_dim_b])
+            #nextblockC = tf.reshape(nextblockC, [self.hidden_dim_b])
 
             block_holder = tensor_array_ops.TensorArray(dtype=tf.float32,size=1,dynamic_size=True,infer_shape=True)
             block_holder_dur = tensor_array_ops.TensorArray(dtype=tf.float32,size=1,dynamic_size=True,infer_shape=True)
@@ -221,32 +248,43 @@ class RNN(object):
                 dura_count, prev_dura,
                 rep_count, prev_token,
                 x_t,a_t,dura_t, h_tm1, c_tm1, block_input,
+                x1,x2,x3,a1,a2,a3,
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura):
 
-                beatVec = tf.one_hot(beat_count,48,1.0,0.0)
+                #beatVec = tf.one_hot(beat_count,48,1.0,0.0)
                 sample = samples.read(seqindex)
                 sample_dur = samples_dur.read(seqindex)
+
+                notesTillEnd = self.sequence_length - seqindex -1 -1 # -1 to boost seqindex, -1 for onehot indexing
+                notesTillEndVec = tf.reshape(tf.one_hot(notesTillEnd,self.endCount,on_value=1.0,off_value=0.0), [self.endCount])
                 
                 # Feed pitch inputs to input GRU layer of pitch RNN
                 rhigh = tf.reshape(tf.to_float(high), [1])
                 rlow = tf.reshape(tf.to_float(low), [1])
                 rchordnote_vec = tf.reshape(tf.to_float(chordnote_vec), [12])
-                rchordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1])
+                rchordkey_vec = tf.reshape(tf.gather(self.g_embeddings_chord,chordkey_vec), [self.emb_dim_chord])
                 rrep_count = tf.reshape(tf.to_float(rep_count), [1])
                 ra_count = tf.reshape(tf.to_float(a_count), [1])
                 rdura_count = tf.reshape(tf.to_float(dura_count),[1])
                 rprev_interval = tf.reshape(tf.to_float(prev_interval),[1])
-                rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,1.0,0.0),[12])
-                rblock_input = tf.reshape(tf.to_float(block_input), [self.hidden_dim_b])
+                rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,on_value=1.0,off_value=0.0),[12])
+                #rblock_input = tf.reshape(tf.to_float(block_input), [self.hidden_dim_b])
                 rx_t = tf.reshape(x_t, [self.emb_dim])
                 ra_t = tf.reshape(a_t, [self.emb_dim_dur])
+                rx1_t = tf.reshape(tf.gather(self.g_embeddings, x1), [self.emb_dim])
+                ra1_t = tf.reshape(tf.gather(self.g_embeddings_dur, a1), [self.emb_dim_dur])
+                rx2_t = tf.reshape(tf.gather(self.g_embeddings, x2), [self.emb_dim])
+                ra2_t = tf.reshape(tf.gather(self.g_embeddings_dur, a2), [self.emb_dim_dur])
+                rx3_t = tf.reshape(tf.gather(self.g_embeddings, x3), [self.emb_dim])
+                ra3_t = tf.reshape(tf.gather(self.g_embeddings_dur, a3), [self.emb_dim_dur])
                 rdura_t = tf.reshape(dura_t,[self.emb_dim_dura])
-                rbeatVec = tf.reshape(beatVec, [48])
+                #rbeatVec = tf.reshape(beatVec, [48])
 
                 rc_tm1 = tf.reshape(c_tm1, [self.hidden_dim, 1])
                 rh_tm1 = tf.reshape(h_tm1, [self.hidden_dim, 1])
                 inputs_recurr = tf.reshape(
-                    tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rblock_input,rx_t,ra_t,rdura_t,rbeatVec],
+                    tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,notesTillEndVec,rx_t,rx1_t,rx2_t,rx3_t,ra_t,ra1_t,ra2_t,ra3_t,rdura_t],
+                    #tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rblock_input,rx_t,ra_t,rdura_t,rbeatVec],
                         0), 
                     [self.num_inputs_block,1])
 
@@ -280,9 +318,9 @@ class RNN(object):
                 gen_o_dur = gen_o_dur.write(seqindex, tf.gather(oa_t, next_token_dur))  # we only need the sampled token's probability
                 gen_x_dur = gen_x_dur.write(seqindex, next_token_dur)  # indices, not embeddings
 
-                block_holder = block_holder.write(i, x_tp1)
-                block_holder_dur = block_holder_dur.write(i, a_tp1)
-                block_holder_dura = block_holder_dura.write(i, dura_tp1)
+                #block_holder = block_holder.write(i, x_tp1)
+                #block_holder_dur = block_holder_dur.write(i, a_tp1)
+                #block_holder_dura = block_holder_dura.write(i, dura_tp1)
 
                 newPitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: pitch_count, lambda: next_token )
                 cpitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0,dtype=tf.int32), lambda: tf.mod(12+next_token-chordkey_vec,12))
@@ -294,6 +332,7 @@ class RNN(object):
                     tf.multiply(a_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                     x_tp1, a_tp1, dura_tp1, firstH,firstC, block_input,\
+                    next_token,x1,x2, next_token_dur,a1,a2,\
                     gen_o, gen_x,gen_o_dur,gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura
 
             i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -302,6 +341,7 @@ class RNN(object):
             dura_count, prev_dura,\
             rep_count, prev_token,\
             x_t,a_t,dura_t, h_tm1, c_tm1, block_input,\
+            x1,x2,x3,a1,a2,a3,\
             gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura = control_flow_ops.while_loop(
                 cond=lambda \
                     i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -310,6 +350,7 @@ class RNN(object):
                     dura_count, prev_dura,\
                     rep_count, prev_token,\
                     x_t,a_t,dura_t, h_tm1, c_tm1, block_input,\
+                    x1,x2,x3,a1,a2,a3,\
                     gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur, block_holder_dura : i < l,
                 body=inner_rec,
                 loop_vars=(
@@ -318,13 +359,14 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count, prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, c_tm1, nextblockH,\
+                    x_t,a_t,dura_t, h_tm1, c_tm1, tf.constant(0,dtype=tf.int32),\
+                    x1,x2,x3,a1,a2,a3,\
                     gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high, block_holder, block_holder_dur,block_holder_dura)
                 )
 
-            nextblock = tf.reshape(tf.pad(tensor=block_holder.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim])
-            nextblock_dur = tf.reshape(tf.pad(tensor=block_holder_dur.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dur])
-            nextblock_dura = tf.reshape(tf.pad(tensor=block_holder_dura.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dura])
+            #nextblock = tf.reshape(tf.pad(tensor=block_holder.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim])
+            #nextblock_dur = tf.reshape(tf.pad(tensor=block_holder_dur.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dur])
+            #nextblock_dura = tf.reshape(tf.pad(tensor=block_holder_dura.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dura])
 
             return ii+1, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
                 chordkey_vec, chordnote_vec, low, high,\
@@ -332,8 +374,9 @@ class RNN(object):
                 dura_count, prev_dura,\
                 rep_count, prev_token,\
                 x_t,a_t,dura_t, h_tm1, c_tm1,\
+                x1,x2,x3,a1,a2,a3,\
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,\
-                maxblocklength, lengths, nextblock, nextblock_dur, nextblock_dura, nextblockH, nextblockC
+                maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc
 
         ii, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
         chordkey_vec, chordnote_vec, low, high,\
@@ -341,6 +384,7 @@ class RNN(object):
         dura_count, prev_dura,\
         rep_count, prev_token,\
         x_t,a_t,dura_t, h_tm1, c_tm1,\
+        x1,x2,x3,a1,a2,a3,\
         self.gen_o, self.gen_x, self.gen_o_dur, self.gen_x_dur, self.gen_low, self.gen_high,\
         maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc = control_flow_ops.while_loop(
             cond = lambda \
@@ -350,16 +394,18 @@ class RNN(object):
                 dura_count, prev_dura,\
                 rep_count, prev_token,\
                 x_t,a_t,dura_t, h_tm1, c_tm1,\
+                x1,x2,x3,a1,a2,a3,\
                 gen_o, gen_x, gen_o_dur, gen_x_dur, gen_low, gen_high,\
                 maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc : ii < self.lengths_length,
             body = _newg_recurrence,
             loop_vars = (
-                tf.constant(0, dtype=tf.int32),tf.constant(0, dtype=tf.int32),self.start_duration,self.start_pitch,tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
+                tf.constant(0, dtype=tf.int32),tf.constant(0, dtype=tf.int32),self.d0,self.p0,tf.constant(0,dtype=tf.int32),tf.mod(12+self.p0-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
-                tf.constant(1,dtype=tf.int32),self.start_duration,
+                tf.constant(1,dtype=tf.int32),self.d0,
                 tf.constant(1,dtype=tf.int32),self.start_dura,
-                tf.constant(1,dtype=tf.int32),self.start_pitch,
-                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura),self.h0,self.c0,
+                tf.constant(1,dtype=tf.int32),self.p0,
+                tf.gather(self.g_embeddings, self.p0),tf.gather(self.g_embeddings_dur, self.d0),tf.gather(self.g_embeddings_dura,self.start_dura),self.h0,self.c0,
+                self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
                 gen_o, gen_x,gen_o_dur,gen_x_dur,gen_low, gen_high,
                 self.maxblocklength, self.lengths, tf.zeros([self.maxblocklength, self.emb_dim]), tf.zeros([self.maxblocklength, self.emb_dim_dur]), tf.zeros([self.maxblocklength, self.emb_dim_dura]), self.blockh0,self.blockc0
                 )
@@ -404,13 +450,16 @@ class RNN(object):
             dura_count, prev_dura,
             rep_count, prev_token, notes, 
             inputs, inputs_dur, h_tm1, c_tm1,
+            x1,x2,x3,a1,a2,a3,
             pred):
             low = inputs_lows[i]
             high = inputs_highs[i]
-            beatVec = tf.one_hot(beat_count,48,1.0,0.0)
-            x_t = inputs.read(i)
+            #beatVec = tf.one_hot(beat_count,48,1.0,0.0)
+            notesTillEnd = self.sequence_length - i -1 -1 # -1 to boost seqindex, -1 for onehot indexing
+            notesTillEndVec = tf.reshape(tf.one_hot(notesTillEnd,self.endCount,on_value=1.0,off_value=0.0), [self.endCount])
+            x_t = tf.gather(self.d_embeddings, prev_token)#inputs.read(i)
             next_token = notes[i]
-            a_t = inputs_dur.read(i)
+            a_t = tf.gather(self.d_embeddings_dur, prev_a)#inputs_dur.read(i)
             next_a = durs[i]
             dura_t = tf.gather(self.d_embeddings_dura,prev_dura)
             next_token_dura = tf.mod(next_a+48-beat_count-1,tf.constant(48,dtype=tf.int32))
@@ -418,21 +467,28 @@ class RNN(object):
             rhigh = tf.reshape(tf.to_float(high), [1])
             rlow = tf.reshape(tf.to_float(low), [1])
             rchordnote_vec = tf.reshape(tf.to_float(chordnote_vec), [12])
-            rchordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1])
+            rchordkey_vec = tf.reshape(tf.gather(self.d_embeddings_chord,chordkey_vec), [self.emb_dim_chord])
             rrep_count = tf.reshape(tf.to_float(rep_count), [1])
             ra_count = tf.reshape(tf.to_float(a_count), [1])
             rdura_count = tf.reshape(tf.to_float(dura_count),[1])
             rprev_interval = tf.reshape(tf.to_float(prev_interval),[1])
-            rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,1.0,0.0),[12])
+            rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,on_value=1.0,off_value=0.0),[12])
             rx_t = tf.reshape(x_t, [self.emb_dim])
             ra_t = tf.reshape(a_t, [self.emb_dim_dur])
+            rx1_t = tf.reshape(tf.gather(self.d_embeddings, x1), [self.emb_dim])
+            ra1_t = tf.reshape(tf.gather(self.d_embeddings_dur, a1), [self.emb_dim_dur])
+            rx2_t = tf.reshape(tf.gather(self.d_embeddings, x2), [self.emb_dim])
+            ra2_t = tf.reshape(tf.gather(self.d_embeddings_dur, a2), [self.emb_dim_dur])
+            rx3_t = tf.reshape(tf.gather(self.d_embeddings, x3), [self.emb_dim])
+            ra3_t = tf.reshape(tf.gather(self.d_embeddings_dur, a3), [self.emb_dim_dur])
             rdura_t = tf.reshape(dura_t,[self.emb_dim_dura])
-            rbeatVec = tf.reshape(beatVec, [48])
+            #rbeatVec = tf.reshape(beatVec, [48])
 
             rc_tm1 = tf.reshape(c_tm1, [self.hidden_dim, 1])
             rh_tm1 = tf.reshape(h_tm1, [self.hidden_dim, 1])
             inputs_recurr = tf.reshape(
-                tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rx_t,ra_t,rdura_t,rbeatVec],
+                tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,notesTillEndVec,rx_t,rx1_t,rx2_t,rx3_t,ra_t,ra1_t,ra2_t,ra3_t,rdura_t],
+                #tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rx_t,ra_t,rdura_t,rbeatVec],
                     0), 
                 [self.num_inputs_noblock,1])
 
@@ -450,6 +506,7 @@ class RNN(object):
                 tf.multiply(dura_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                 tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1, next_token,notes,\
                 inputs, inputs_dur, h_t, c_t,\
+                next_token,x1,x2, next_a,a1,a2,\
                 pred
 
         i,beat_count,prev_interval, prev_pitch_chord,\
@@ -458,6 +515,7 @@ class RNN(object):
         dura_count, prev_dura,\
         rep_count, prev_token, notes,\
         inputs, inputs_dur, h_tm1, c_tm1,\
+        x1,x2,x3,a1,a2,a3,\
         self.d_gen_predictions = control_flow_ops.while_loop(
             cond=lambda \
                 i,beat_count,prev_interval, prev_pitch_chord,\
@@ -465,14 +523,18 @@ class RNN(object):
                 a_count, prev_a, durs,\
                 dura_count, prev_dura,\
                 rep_count, prev_token, notes,\
-                inputs, inputs_dur, h_tm1, c_tm1, pred: i < self.sequence_length,
+                inputs, inputs_dur, h_tm1, c_tm1,\
+                x1,x2,x3,a1,a2,a3,\
+                pred: i < self.sequence_length,
             body=_d_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),self.start_duration, tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.d0, tf.constant(0,dtype=tf.int32),tf.mod(12+self.p0-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.gen_low.stack(),self.gen_high.stack(),
-                tf.constant(1,dtype=tf.int32), self.start_duration, self.gen_x_dur,
+                tf.constant(1,dtype=tf.int32), self.d0, self.gen_x_dur,
                 tf.constant(1,dtype=tf.int32), self.start_dura,
-                tf.constant(1,dtype=tf.int32), self.start_pitch, self.gen_x,
-                ta_emb_gen_x, ta_emb_gen_x_dur,self.d_h0,self.d_c0, d_gen_predictions))
+                tf.constant(1,dtype=tf.int32), self.p0, self.gen_x,
+                ta_emb_gen_x, ta_emb_gen_x_dur,self.d_h0,self.d_c0, 
+                self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
+                d_gen_predictions))
         self.d_gen_predictions = tf.reshape(
                 self.d_gen_predictions.stack(),
                 [self.sequence_length])
@@ -483,6 +545,7 @@ class RNN(object):
         dura_count, prev_dura,\
         rep_count, prev_token, notes,\
         inputs, inputs_dur, h_tm1, c_tm1,\
+        x1,x2,x3,a1,a2,a3,\
         self.d_real_predictions = control_flow_ops.while_loop(
             cond=lambda \
                 i,beat_count,prev_interval, prev_pitch_chord,\
@@ -490,14 +553,18 @@ class RNN(object):
                 a_count, prev_a, durs,\
                 dura_count, prev_dura,\
                 rep_count, prev_token, notes, \
-                inputs, inputs_dur, h_tm1, c_tm1, pred: i < self.sequence_length,
+                inputs, inputs_dur, h_tm1, c_tm1, \
+                x1,x2,x3,a1,a2,a3,\
+                pred: i < self.sequence_length,
             body=_d_recurrence,
-            loop_vars=(tf.constant(0, dtype=tf.int32),self.start_duration, tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.d0, tf.constant(0,dtype=tf.int32),tf.mod(12+self.p0-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],self.lows,self.highs,
-                tf.constant(1,dtype=tf.int32),self.start_duration,self.x_dur,
+                tf.constant(1,dtype=tf.int32),self.d0,self.x_dur,
                 tf.constant(1,dtype=tf.int32),self.start_dura,
-                tf.constant(1,dtype=tf.int32),self.start_pitch,self.x,
-                ta_emb_real_x, ta_emb_real_x_dur,self.d_h0,self.d_c0, d_real_predictions))
+                tf.constant(1,dtype=tf.int32),self.p0,self.x,
+                ta_emb_real_x, ta_emb_real_x_dur,self.d_h0,self.d_c0, 
+                self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
+                d_real_predictions))
         self.d_real_predictions = tf.reshape(
                 self.d_real_predictions.stack(),
                 [self.sequence_length])
@@ -531,24 +598,25 @@ class RNN(object):
             dura_count, prev_dura,
             rep_count, prev_token,
             x_t,a_t, dura_t, h_tm1, c_tm1,
+            x1,x2,x3,a1,a2,a3,
             g_predictions,g_predictions_dur,
             maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc): 
             l = lengths[ii]
 
-            prev_block = tf.reshape(prev_block,[self.maxblocklength*self.emb_dim])
-            prev_block_dur = tf.reshape(prev_block_dur, [self.maxblocklength*self.emb_dim_dur])
-            prev_block_dura = tf.reshape(prev_block_dura, [self.maxblocklength*self.emb_dim_dura])
+            # prev_block = tf.reshape(prev_block,[self.maxblocklength*self.emb_dim])
+            # prev_block_dur = tf.reshape(prev_block_dur, [self.maxblocklength*self.emb_dim_dur])
+            # prev_block_dura = tf.reshape(prev_block_dura, [self.maxblocklength*self.emb_dim_dura])
 
-            rblockh = tf.reshape(blockh, [self.hidden_dim_b,1])
-            rblockc = tf.reshape(blockc, [self.hidden_dim_b,1])
-            inputs_miniseq = tf.reshape(
-                tf.concat([prev_block,prev_block_dur,prev_block_dura],
-                    0), 
-                [self.num_inputs_miniseq,1])
+            # rblockh = tf.reshape(blockh, [self.hidden_dim_b,1])
+            # rblockc = tf.reshape(blockc, [self.hidden_dim_b,1])
+            # inputs_miniseq = tf.reshape(
+            #     tf.concat([prev_block,prev_block_dur,prev_block_dura],
+            #         0), 
+            #     [self.num_inputs_miniseq,1])
 
-            nextblockH,nextblockC = self.g_recurrent_unit_miniseq(rblockh,inputs_miniseq,rblockc)
-            nextblockH = tf.reshape(nextblockH, [self.hidden_dim_b])
-            nextblockC = tf.reshape(nextblockC, [self.hidden_dim_b])
+            # nextblockH,nextblockC = self.g_recurrent_unit_miniseq(rblockh,inputs_miniseq,rblockc)
+            # nextblockH = tf.reshape(nextblockH, [self.hidden_dim_b])
+            # nextblockC = tf.reshape(nextblockC, [self.hidden_dim_b])
 
             block_holder = tensor_array_ops.TensorArray(dtype=tf.float32,size=1,dynamic_size=True,infer_shape=True)
             block_holder_dur = tensor_array_ops.TensorArray(dtype=tf.float32,size=1,dynamic_size=True,infer_shape=True)
@@ -560,30 +628,40 @@ class RNN(object):
                 dura_count, prev_dura,
                 rep_count, prev_token,
                 x_t,a_t,dura_t, h_tm1, c_tm1, block_input,
+                x1,x2,x3,a1,a2,a3,
                 g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura):
 
-                beatVec = tf.one_hot(beat_count,48,1.0,0.0)
+                #beatVec = tf.one_hot(beat_count,48,1.0,0.0)
+                notesTillEnd = self.sequence_length - seqindex -1 -1 # -1 to boost seqindex, -1 for onehot indexing
+                notesTillEndVec = tf.reshape(tf.one_hot(notesTillEnd,self.endCount,on_value=1.0,off_value=0.0), [self.endCount])
 
                 # Feed pitch inputs to input GRU layer of pitch RNN
                 rhigh = tf.reshape(tf.to_float(high), [1])
                 rlow = tf.reshape(tf.to_float(low), [1])
                 rchordnote_vec = tf.reshape(tf.to_float(chordnote_vec), [12])
-                rchordkey_vec = tf.reshape(tf.to_float(chordkey_vec), [1])
+                rchordkey_vec = tf.reshape(tf.gather(self.g_embeddings_chord,chordkey_vec), [self.emb_dim_chord])
                 rrep_count = tf.reshape(tf.to_float(rep_count), [1])
                 ra_count = tf.reshape(tf.to_float(a_count), [1])
                 rdura_count = tf.reshape(tf.to_float(dura_count),[1])
                 rprev_interval = tf.reshape(tf.to_float(prev_interval),[1])
-                rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,1.0,0.0),[12])
-                rblock_input = tf.reshape(tf.to_float(block_input), [self.hidden_dim_b])
+                rprev_pitch_chord = tf.reshape(tf.one_hot(prev_pitch_chord,12,on_value=1.0,off_value=0.0),[12])
+                #rblock_input = tf.reshape(tf.to_float(block_input), [self.hidden_dim_b])
                 rx_t = tf.reshape(x_t, [self.emb_dim])
                 ra_t = tf.reshape(a_t, [self.emb_dim_dur])
+                rx1_t = tf.reshape(tf.gather(self.g_embeddings, x1), [self.emb_dim])
+                ra1_t = tf.reshape(tf.gather(self.g_embeddings_dur, a1), [self.emb_dim_dur])
+                rx2_t = tf.reshape(tf.gather(self.g_embeddings, x2), [self.emb_dim])
+                ra2_t = tf.reshape(tf.gather(self.g_embeddings_dur, a2), [self.emb_dim_dur])
+                rx3_t = tf.reshape(tf.gather(self.g_embeddings, x3), [self.emb_dim])
+                ra3_t = tf.reshape(tf.gather(self.g_embeddings_dur, a3), [self.emb_dim_dur])
                 rdura_t = tf.reshape(dura_t,[self.emb_dim_dura])
-                rbeatVec = tf.reshape(beatVec, [48])
+                #rbeatVec = tf.reshape(beatVec, [48])
 
                 rc_tm1 = tf.reshape(c_tm1, [self.hidden_dim, 1])
                 rh_tm1 = tf.reshape(h_tm1, [self.hidden_dim, 1])
                 inputs_recurr = tf.reshape(
-                    tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rblock_input,rx_t,ra_t,rdura_t,rbeatVec],
+                    tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,notesTillEndVec,rx_t,rx1_t,rx2_t,rx3_t,ra_t,ra1_t,ra2_t,ra3_t,rdura_t],
+                    #tf.concat([rhigh,rlow,rchordnote_vec,rchordkey_vec,rrep_count,ra_count,rdura_count,rprev_interval,rprev_pitch_chord,rblock_input,rx_t,ra_t,rdura_t,rbeatVec],
                         0), 
                     [self.num_inputs_block,1])
 
@@ -605,9 +683,9 @@ class RNN(object):
                 g_predictions = g_predictions.write(seqindex, o_t)
                 g_predictions_dur = g_predictions_dur.write(seqindex,oa_t)
 
-                block_holder = block_holder.write(i, x_tp1)
-                block_holder_dur = block_holder_dur.write(i, a_tp1)
-                block_holder_dura = block_holder_dura.write(i,dura_tp1)
+                #block_holder = block_holder.write(i, x_tp1)
+                #block_holder_dur = block_holder_dur.write(i, a_tp1)
+                #block_holder_dura = block_holder_dura.write(i,dura_tp1)
 
                 newPitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: pitch_count, lambda: next_token )
                 cpitch = tf.cond(tf.equal(next_token,tf.constant(self.REST_VAL,dtype=tf.int32)), lambda: tf.constant(0,dtype=tf.int32), lambda: tf.mod(12+next_token-chordkey_vec,12))
@@ -619,6 +697,7 @@ class RNN(object):
                     tf.multiply(dura_count,tf.to_int32(tf.equal(prev_dura,next_token_dura)))+1,next_token_dura, \
                     tf.multiply(rep_count,tf.to_int32(tf.equal(prev_token,next_token)))+1,next_token, \
                     x_tp1, a_tp1, dura_tp1, firstH, firstC, block_input,\
+                    next_token,x1,x2, next_token_dur,a1,a2,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura
 
             i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -627,6 +706,7 @@ class RNN(object):
             dura_count, prev_dura,\
             rep_count, prev_token,\
             x_t,a_t,dura_t, h_tm1, c_tm1, block_input,\
+            x1,x2,x3,a1,a2,a3,\
             g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura = control_flow_ops.while_loop(
                 cond=lambda \
                     i, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
@@ -635,6 +715,7 @@ class RNN(object):
                     dura_count,prev_dura,\
                     rep_count, prev_token,\
                     x_t,a_t,dura_t, h_tm1, c_tm1, block_input,\
+                    x1,x2,x3,a1,a2,a3,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura : i < l,
                 body=inner_rec,
                 loop_vars=(
@@ -643,13 +724,14 @@ class RNN(object):
                     a_count, prev_a,\
                     dura_count,prev_dura,\
                     rep_count, prev_token,\
-                    x_t,a_t,dura_t, h_tm1, c_tm1, nextblockH,\
+                    x_t,a_t,dura_t, h_tm1, c_tm1, tf.constant(0,dtype=tf.int32),\
+                    x1,x2,x3,a1,a2,a3,\
                     g_predictions,g_predictions_dur, block_holder, block_holder_dur,block_holder_dura)
                 )
 
-            nextblock = tf.reshape(tf.pad(tensor=block_holder.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim])
-            nextblock_dur = tf.reshape(tf.pad(tensor=block_holder_dur.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dur])
-            nextblock_dura = tf.reshape(tf.pad(tensor=block_holder_dura.stack(),paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dura])
+            #nextblock = tf.reshape(tf.pad(tensor=block_holder.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim])
+            #nextblock_dur = tf.reshape(tf.pad(tensor=block_holder_dur.stack(), paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dur])
+            #nextblock_dura = tf.reshape(tf.pad(tensor=block_holder_dura.stack(),paddings=[[0,maxblocklength-l],[0,0]], mode='CONSTANT'),[self.maxblocklength,self.emb_dim_dura])
 
             return ii+1, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
                 chordkey_vec, chordnote_vec, low, high,\
@@ -657,8 +739,9 @@ class RNN(object):
                 dura_count,prev_dura,\
                 rep_count, prev_token,\
                 x_t,a_t,dura_t, h_tm1, c_tm1,\
+                x1,x2,x3,a1,a2,a3,\
                 g_predictions,g_predictions_dur,\
-                maxblocklength, lengths, nextblock, nextblock_dur, nextblock_dura, nextblockH, nextblockC
+                maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc
 
         ii, seqindex, beat_count, pitch_count, prev_interval, prev_pitch_chord,\
         chordkey_vec, chordnote_vec, low, high,\
@@ -666,6 +749,7 @@ class RNN(object):
         dura_count,prev_dura,\
         rep_count, prev_token,\
         x_t,a_t,dura_t, h_tm1, c_tm1,\
+        x1,x2,x3,a1,a2,a3,\
         self.g_predictions,self.g_predictions_dur,\
         maxblocklength, lengths, prev_block, prev_block_dur,prev_block_dura, blockh, blockc = control_flow_ops.while_loop(
             cond = lambda \
@@ -675,16 +759,18 @@ class RNN(object):
                 dura_count,prev_dura,\
                 rep_count, prev_token,\
                 x_t,a_t,dura_t, h_tm1, c_tm1,\
+                x1,x2,x3,a1,a2,a3,\
                 g_predictions, g_predictions_dur,\
                 maxblocklength, lengths, prev_block, prev_block_dur, prev_block_dura, blockh, blockc : ii < self.lengths_length,
             body = _newpretrain_recurrence,
             loop_vars = (
-                tf.constant(0, dtype=tf.int32),tf.constant(0, dtype=tf.int32),self.start_duration,self.start_pitch,tf.constant(0,dtype=tf.int32),tf.mod(12+self.start_pitch-self.start_chordkey,12),
+                tf.constant(0, dtype=tf.int32),tf.constant(0, dtype=tf.int32),self.d0,self.p0,tf.constant(0,dtype=tf.int32),tf.mod(12+self.p0-self.start_chordkey,12),
                 self.chordKeys_onehot[0],self.chordNotes[0],tf.constant(0.0,dtype=tf.float32),tf.constant(0.0,dtype=tf.float32),
-                tf.constant(1,dtype=tf.int32),self.start_duration,
+                tf.constant(1,dtype=tf.int32),self.d0,
                 tf.constant(1,dtype=tf.int32),self.start_dura,
-                tf.constant(1,dtype=tf.int32),self.start_pitch,
-                tf.gather(self.g_embeddings, self.start_pitch),tf.gather(self.g_embeddings_dur, self.start_duration),tf.gather(self.g_embeddings_dura,self.start_dura), self.h0, self.c0,
+                tf.constant(1,dtype=tf.int32),self.p0,
+                tf.gather(self.g_embeddings, self.p0),tf.gather(self.g_embeddings_dur, self.d0),tf.gather(self.g_embeddings_dura,self.start_dura), self.h0, self.c0,
+                self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
                 g_predictions,g_predictions_dur,
                 self.maxblocklength, self.lengths, tf.zeros([self.maxblocklength, self.emb_dim]), tf.zeros([self.maxblocklength, self.emb_dim_dur]), tf.zeros([self.maxblocklength,self.emb_dim_dura]), self.blockh0, self.blockc0
                 )
@@ -727,11 +813,11 @@ class RNN(object):
         self.pretrain_loss = \
             (-tf.reduce_sum(
                 tf.one_hot(tf.to_int64(self.x),
-                           self.num_emb, 1.0, 0.0) * tf.log(tf.clip_by_value(self.g_predictions,1e-7,1e7)))
+                           self.num_emb, on_value=1.0, off_value=0.0) * tf.log(tf.clip_by_value(self.g_predictions,1e-7,1e7)))
              / tf.to_float(self.sequence_length)) \
             + (-tf.reduce_sum(
                 tf.one_hot(tf.to_int64(self.x_dur),
-                           self.num_emb_dur, 1.0, 0.0) * tf.log(tf.clip_by_value(self.g_predictions_dur,1e-7,1e7)))
+                           self.num_emb_dur, on_value=1.0, off_value=0.0) * tf.log(tf.clip_by_value(self.g_predictions_dur,1e-7,1e7)))
              / tf.to_float(self.sequence_length))
 
         # training updates
@@ -754,7 +840,17 @@ class RNN(object):
         self.pretrain_grad = tf.gradients(self.pretrain_loss, self.g_params)
         self.pretrain_updates = pretrain_opt.apply_gradients(zip(self.pretrain_grad, self.g_params))
 
-    def generate(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura):
+    def generate(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
+        start_dura = n0[4]
+        start_chordkey = n0[3]
+        p0 = n1[0]
+        p1 = n1[0]
+        p2 = n2[0]
+        p3 = n3[0]
+        d0 = n0[1]
+        d1 = n1[1]
+        d2 = n2[1]
+        d3 = n3[1]
         outputs = session.run(
                 [self.gen_x, self.gen_x_dur],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
@@ -764,12 +860,24 @@ class RNN(object):
                            self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.lengths: lengths,
                            self.chordKeys: chordkeys, self.chordKeys_onehot: chordkeys_onehot, self.chordNotes: chordnotes,
-                           self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration, self.start_beat:start_beat, 
+                           self.sequence_length: sequence_length,
+                           self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
+                           self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
                            self.start_chordkey:start_chordkey, self.start_dura:start_dura,
                            self.temph0s: np.random.normal(size=self.hidden_dim)})
         return outputs
 
-    def train_g_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura):
+    def train_g_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
+        start_dura = n0[4]
+        start_chordkey = n0[3]
+        p0 = n1[0]
+        p1 = n1[0]
+        p2 = n2[0]
+        p3 = n3[0]
+        d0 = n0[1]
+        d1 = n1[1]
+        d2 = n2[1]
+        d3 = n3[1]
         outputs = session.run(
                 [self.g_updates, self.reward_updates, self.g_loss,
                  self.expected_reward, self.gen_x, self.gen_x_dur],
@@ -780,12 +888,24 @@ class RNN(object):
                            self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.lengths: lengths,
                            self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot, self.chordNotes: chordnotes,
-                           self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration, self.start_beat:start_beat, 
+                           self.sequence_length: sequence_length,
+                           self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
+                           self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
                            self.start_chordkey:start_chordkey, self.start_dura:start_dura,
                            self.temph0s: np.random.normal(size=self.hidden_dim)})
         return outputs
 
-    def train_d_gen_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura):
+    def train_d_gen_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
+        start_dura = n0[4]
+        start_chordkey = n0[3]
+        p0 = n1[0]
+        p1 = n1[0]
+        p2 = n2[0]
+        p3 = n3[0]
+        d0 = n0[1]
+        d1 = n1[1]
+        d2 = n2[1]
+        d3 = n3[1]
         outputs = session.run(
                 [self.d_gen_updates, self.d_gen_loss],
                 feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
@@ -795,21 +915,45 @@ class RNN(object):
                            self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
                            self.lengths: lengths,
                            self.chordKeys: chordkeys, self.chordKeys_onehot: chordkeys_onehot, self.chordNotes: chordnotes,
-                           self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration, self.start_beat:start_beat, 
+                           self.sequence_length: sequence_length,
+                           self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
+                           self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
                            self.start_chordkey:start_chordkey, self.start_dura:start_dura,
                            self.temph0s: np.random.normal(size=self.hidden_dim)})
         return outputs
 
-    def train_d_real_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura):
+    def train_d_real_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,n0,n1,n2,n3):
+        start_dura = n0[4]
+        start_chordkey = n0[3]
+        p0 = n1[0]
+        p1 = n1[0]
+        p2 = n2[0]
+        p3 = n3[0]
+        d0 = n0[1]
+        d1 = n1[1]
+        d2 = n2[1]
+        d3 = n3[1]
         outputs = session.run([self.d_real_updates, self.d_real_loss],
                               feed_dict={self.x: x, self.x_dur: x_dur,
                                          self.lengths: lengths,
                                          self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot,self.chordNotes:chordnotes, self.lows:low, self.highs:high,
-                                         self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration, self.start_beat:start_beat, 
+                                         self.sequence_length: sequence_length,
+                                         self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
+                                         self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3,
                                          self.start_chordkey:start_chordkey, self.start_dura:start_dura})
         return outputs
 
-    def pretrain_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,start_pitch,start_duration,start_beat,start_chordkey,start_dura):
+    def pretrain_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,n0,n1,n2,n3):
+        start_dura = n0[4]
+        start_chordkey = n0[3]
+        p0 = n1[0]
+        p1 = n1[0]
+        p2 = n2[0]
+        p3 = n3[0]
+        d0 = n0[1]
+        d1 = n1[1]
+        d2 = n2[1]
+        d3 = n3[1]
         outputs = session.run([self.pretrain_updates, self.pretrain_loss, self.g_predictions, self.g_predictions_dur],
                               feed_dict={self.x: x, self.x_dur: x_dur,
                                          self.h0: np.random.normal(size=self.hidden_dim),
@@ -818,7 +962,9 @@ class RNN(object):
                                          self.blockc0: np.random.normal(size=self.hidden_dim_b),
                                          self.lengths: lengths,
                                          self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot,self.chordNotes:chordnotes, self.lows:low, self.highs:high,
-                                         self.sequence_length: sequence_length, self.start_pitch:start_pitch, self.start_duration:start_duration, self.start_beat:start_beat, 
+                                         self.sequence_length: sequence_length,
+                                         self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
+                                         self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3,
                                          self.start_chordkey:start_chordkey, self.start_dura:start_dura,
                                          self.temph0s: np.random.normal(size=self.hidden_dim)})
         return outputs
