@@ -32,7 +32,7 @@ if LEADSHEET_CHOICE == TWOFIVEONE:
     parsename = "ii-V-I_leadsheets"
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     print("Using Transcriptions")
-    parsename = "majors"
+    parsename = "transcriptions"
 
 expertname = ""
 NOTEADJUST = 0
@@ -98,6 +98,7 @@ NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
 MIN_BLOCK_LENGTH = 1
 MAX_BLOCK_LENGTH = 16
+END_COUNT = 5
 if LEADSHEET_CHOICE == TWOFIVEONE:
     MAX_SEQ_LENGTH = 20
     MAX_BLOCK_LENGTH = 2
@@ -125,7 +126,7 @@ def get_trainable_model():
         NUM_EMB, NUM_EMB_DUR, NUM_EMB_DURA, NUM_EMB_CHORD,
         EMB_DIM, EMB_DIM_DUR, EMB_DIM_DURA, EMB_DIM_CHORD,
         HIDDEN_DIM, HIDDEN_DIM_B, NUMBER_HIDDEN_LAYERS,
-        MAX_SEQ_LENGTH, MAX_BLOCK_LENGTH,
+        MAX_SEQ_LENGTH, MAX_BLOCK_LENGTH,END_COUNT,
         learning_rate=LEARNING_RATE,MIDI_MIN=MIDI_MIN,MIDI_MAX=MIDI_MAX,ENCODING=ENCODING)
 
 def get_sequences(notepath,durpath,chordpath,pospath,startppath):
