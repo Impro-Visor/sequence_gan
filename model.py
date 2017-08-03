@@ -4,25 +4,6 @@ import numpy as np
 import tensorflow as tf
 from tensorflow.python.ops import tensor_array_ops, control_flow_ops
 
-
-def _cumsum(x, length):
-    lower_triangular_ones = tf.constant(
-        np.tril(np.ones((length, length))),
-        dtype=tf.float32)
-    return tf.reshape(
-            tf.matmul(lower_triangular_ones,
-                      tf.reshape(x, [length, 1])),
-            [length])
-
-
-def _backwards_cumsum(x, length):
-    duple_length = tf.stack([length,length])
-    length_one = tf.stack([length,tf.constant(1,dtype=tf.int32)])
-    upper_triangular_ones = tf.matrix_band_part(tf.ones(duple_length), 0, -1)
-    mult = tf.matmul(upper_triangular_ones,
-                      tf.reshape(x, length_one))
-    return tf.reshape(mult,[length])
-
 ONE_HOT = 0
 BITS = 1
 
@@ -158,18 +139,17 @@ class RNN(object):
             self.d_params.append(self.d_h0)
             self.d_params.append(self.d_c0)
 
-        self.h0 = tf.placeholder(tf.float32, shape=[self.hidden_dim])  # initial horizontal vector
-        self.c0 = tf.placeholder(tf.float32, shape=[self.hidden_dim]) # initial state vector
-        self.blockh0 = tf.placeholder(tf.float32,shape=[self.hidden_dim_b]) # init h vec for blocks
-        self.blockc0 = tf.placeholder(tf.float32,shape=[self.hidden_dim_b]) # init state vec for blocks
-        self.temph0s = tf.placeholder(tf.float32, shape=[self.hidden_dim]) # TODO: replace with proper layering
+        self.h0 = tf.random_normal([self.hidden_dim]) # initial horizontal vector
+        self.c0 = tf.random_normal([self.hidden_dim]) # initial state vector
+        self.blockh0 = tf.random_normal([self.hidden_dim_b]) # init h vec for blocks
+        self.blockc0 = tf.random_normal([self.hidden_dim_b]) # init state vec for blocks
         self.lengths = tf.placeholder(tf.int32, shape=[None]) # sequence of lengths for minisequences
         self.lengths_length = tf.shape(self.lengths)[0] # length of sequence of lengths
         self.x = tf.placeholder(tf.int32, shape=[None])  # sequence of indices of true note intervals, not including start token
         self.x_dur = tf.placeholder(tf.int32, shape=[None])  # sequence of indices of true durs, not including start token
         self.x_pitch = tf.placeholder(tf.int32,shape=[None]) # sequence of indices of true notes, not including start token
-        self.samples = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
-        self.samples_dur = tf.placeholder(tf.float32, shape=[None])  # random samples from [0, 1]
+        self.samples = tf.random_uniform([self.sequence_length]) # random samples from [0, 1]
+        self.samples_dur = tf.random_uniform([self.sequence_length])  # random samples from [0, 1]
         self.chordKeys = tf.placeholder(tf.int32, shape=[None]) # sequence of chord key values
         #self.start_pitch = tf.placeholder(tf.int32,shape=[]) # starting pitch for INTERVALs
         self.p0 = tf.placeholder(tf.int32,shape=[]) # starting pitch
@@ -294,12 +274,12 @@ class RNN(object):
 
                 # Feed output to softmax unit to get next predicted token
                 o_t = self.g_output_unit(self.g_embeddings, self.num_emb, self.hidden_dim, firstH)
-                o_cumsum = _cumsum(o_t, self.num_emb)  # prepare for sampling
+                o_cumsum = tf.cumsum(o_t)  # prepare for sampling
                 next_token = tf.maximum(tf.to_int32(tf.reduce_min(tf.where(sample < o_cumsum))),tf.constant(0,dtype=tf.int32))   # sample
                 x_tp1 = tf.gather(self.g_embeddings, next_token)
 
                 oa_t = self.g_output_unit_dur(self.g_embeddings_dur, self.num_emb_dur, self.hidden_dim, firstH)
-                oa_cumsum = _cumsum(oa_t, self.num_emb_dur)
+                oa_cumsum = tf.cumsum(oa_t)
                 next_token_dur = tf.maximum(tf.to_int32(tf.reduce_min(tf.where(sample_dur < oa_cumsum))),tf.constant(0,dtype=tf.int32))
                 a_tp1 = tf.gather(self.g_embeddings_dur, next_token_dur)
                 next_token_dura = tf.mod(next_token_dur + 48 - beat_count - 1,tf.constant(48,dtype=tf.int32))
@@ -794,10 +774,10 @@ class RNN(object):
 
         # calculate generator rewards and loss
         decays = tf.exp(tf.log(self.reward_gamma) * tf.to_float(tf.range(self.sequence_length)))
-        rewards = _backwards_cumsum(decays * tf.sigmoid(self.d_gen_predictions),
-                                    self.sequence_length)
+        rewards = tf.cumsum(decays * tf.sigmoid(self.d_gen_predictions),
+                                    reverse=True)
         #zero_pads = tf.zeros([self.max_sequence_length - self.sequence_length],tf.float32)
-        r_div = tf.div(rewards, _backwards_cumsum(decays, self.sequence_length))
+        r_div = tf.div(rewards, tf.cumsum(decays, reverse=True))
         expected_reward_short = tf.slice(self.expected_reward,[0],[self.sequence_length])
         normalized_rewards = r_div - expected_reward_short #\
             #tf.concat([r_div, zero_pads], 0) - self.expected_reward
@@ -853,18 +833,12 @@ class RNN(object):
         d3 = n3[1]
         outputs = session.run(
                 [self.gen_x, self.gen_x_dur],
-                feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
-                           self.c0: np.random.normal(size=self.hidden_dim),
-                           self.blockh0: np.random.normal(size=self.hidden_dim_b),
-                           self.blockc0: np.random.normal(size=self.hidden_dim_b),
-                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
-                           self.lengths: lengths,
+                feed_dict={self.lengths: lengths,
                            self.chordKeys: chordkeys, self.chordKeys_onehot: chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length,
                            self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                            self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
-                           self.start_chordkey:start_chordkey, self.start_dura:start_dura,
-                           self.temph0s: np.random.normal(size=self.hidden_dim)})
+                           self.start_chordkey:start_chordkey, self.start_dura:start_dura})
         return outputs
 
     def train_g_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
@@ -881,18 +855,12 @@ class RNN(object):
         outputs = session.run(
                 [self.g_updates, self.reward_updates, self.g_loss,
                  self.expected_reward, self.gen_x, self.gen_x_dur],
-                feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
-                           self.c0: np.random.normal(size=self.hidden_dim),
-                           self.blockh0: np.random.normal(size=self.hidden_dim_b),
-                           self.blockc0: np.random.normal(size=self.hidden_dim_b),
-                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
-                           self.lengths: lengths,
+                feed_dict={self.lengths: lengths,
                            self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length,
                            self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                            self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
-                           self.start_chordkey:start_chordkey, self.start_dura:start_dura,
-                           self.temph0s: np.random.normal(size=self.hidden_dim)})
+                           self.start_chordkey:start_chordkey, self.start_dura:start_dura})
         return outputs
 
     def train_d_gen_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
@@ -908,18 +876,12 @@ class RNN(object):
         d3 = n3[1]
         outputs = session.run(
                 [self.d_gen_updates, self.d_gen_loss],
-                feed_dict={self.h0: np.random.normal(size=self.hidden_dim),
-                           self.c0: np.random.normal(size=self.hidden_dim),
-                           self.blockh0: np.random.normal(size=self.hidden_dim_b),
-                           self.blockc0: np.random.normal(size=self.hidden_dim_b),
-                           self.samples: np.random.random(sequence_length),self.samples_dur: np.random.random(sequence_length),
-                           self.lengths: lengths,
+                feed_dict={self.lengths: lengths,
                            self.chordKeys: chordkeys, self.chordKeys_onehot: chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length,
                            self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                            self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
-                           self.start_chordkey:start_chordkey, self.start_dura:start_dura,
-                           self.temph0s: np.random.normal(size=self.hidden_dim)})
+                           self.start_chordkey:start_chordkey, self.start_dura:start_dura})
         return outputs
 
     def train_d_real_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,n0,n1,n2,n3):
@@ -956,17 +918,12 @@ class RNN(object):
         d3 = n3[1]
         outputs = session.run([self.pretrain_updates, self.pretrain_loss, self.g_predictions, self.g_predictions_dur],
                               feed_dict={self.x: x, self.x_dur: x_dur,
-                                         self.h0: np.random.normal(size=self.hidden_dim),
-                                         self.c0: np.random.normal(size=self.hidden_dim),
-                                         self.blockh0: np.random.normal(size=self.hidden_dim_b),
-                                         self.blockc0: np.random.normal(size=self.hidden_dim_b),
                                          self.lengths: lengths,
                                          self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot,self.chordNotes:chordnotes, self.lows:low, self.highs:high,
                                          self.sequence_length: sequence_length,
                                          self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                                          self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3,
-                                         self.start_chordkey:start_chordkey, self.start_dura:start_dura,
-                                         self.temph0s: np.random.normal(size=self.hidden_dim)})
+                                         self.start_chordkey:start_chordkey, self.start_dura:start_dura})
         return outputs
 
     def init_matrix(self, shape):

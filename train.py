@@ -6,8 +6,8 @@ import numpy as np
 import random
 
 def constructPrintStrings(n0,n1,n2,n3, lengths, noteseq, durseq):
-    notestr ="["+ str(n0[0]) + ", " + str(n1[0]) + ", " + str(n2[0]) + ", " + str(n3[0])
-    durstr ="["+ str(n0[1]) + ", " + str(n1[1]) + ", " + str(n2[1]) + ", " + str(n3[1])
+    notestr ="["+ str(n3[0]) + ", " + str(n2[0]) + ", " + str(n1[0]) + ", " + str(n0[0])
+    durstr ="["+ str(n3[1]) + ", " + str(n2[1]) + ", " + str(n1[1]) + ", " + str(n0[1])
     noteindex = 0
     for l in lengths:
         notestr += ", ("

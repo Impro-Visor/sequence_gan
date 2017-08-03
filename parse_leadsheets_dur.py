@@ -17,8 +17,9 @@ CHORD = False
 interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 parsename = "ii-V-I_leadsheets"
+FOUR_BAR_CUT = False
 if USING_TRANSCRIPTIONS:
-    parsename = "majmin"
+    parsename = "transcriptions"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -206,15 +207,21 @@ def parseLeadsheets(ldir,verbose=False):
                             numNotes += 1
                             continue
 
-                        if index_count % (48*4) == 0:
-                            note_count -= 1
-                            print(index_count,index_count / 48)
-                            break
-                        # if note[0] == None and note[1] >= 12:
-                        #    break # found rest, end of phrase
-                        # if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
-                        #    if numNotes >= 6:
-                        #        break
+                        if FOUR_BAR_CUT:
+                            if index_count % (48*4) == 0:
+                                note_count -= 1
+                                print(index_count,index_count / 48)
+                                break
+                        else:
+                            if note[0] == None and note[1] >= 12:
+                                note_count -= 1
+                                #print(index_count,index_count / 48,c[index_count%clen][0])
+                                break # found rest, end of phrase
+                            if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
+                                if numNotes >= 6:
+                                    note_count -= 1
+                                    #print(index_count,index_count / 48,c[index_count % clen][0])
+                                    break
 
                         cseq.append(c[index_count % clen]) # get the full chord vec for the slot
                         ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
