@@ -18,7 +18,7 @@ interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 parsename = "ii-V-I_leadsheets"
 if USING_TRANSCRIPTIONS:
-    parsename = "minors"
+    parsename = "majmin"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -160,18 +160,8 @@ def parseLeadsheets(ldir,verbose=False):
                             bindur = '0'*(NUM_BITS-len(bindur))+bindur
                             dur = [int(x) for x in bindur]
                         elif bits_or_onehot == ONE_HOT:
-                            try:
-                                #if note[1] not in DURATION_MAPPING.keys():
-                                #    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                                #assert note[1] <= 48
-                                dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
-                                otherdur = note[1]-1
-                            except AssertionError:
-                                keyerror_count += 1
-                                valid_leadsheet = False
-                                break
-                                if verbose:
-                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
+                            dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
+                            otherdur = note[1]-1
                         
                         if note[0] != None:
                             if note[0] > highest_note:
@@ -215,14 +205,14 @@ def parseLeadsheets(ldir,verbose=False):
                             isStart3 = False
                             numNotes += 1
                             continue
-                        #print(index_count % (48*4), index_count, index_count/48)
+
                         if index_count % (48*4) == 0:
                             note_count -= 1
                             print(index_count,index_count / 48)
                             break
-                        #if note[0] == None and note[1] >= 12:
+                        # if note[0] == None and note[1] >= 12:
                         #    break # found rest, end of phrase
-                        #if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
+                        # if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
                         #    if numNotes >= 6:
                         #        break
 

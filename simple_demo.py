@@ -32,7 +32,8 @@ if LEADSHEET_CHOICE == TWOFIVEONE:
     parsename = "ii-V-I_leadsheets"
 elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     print("Using Transcriptions")
-    parsename = "transcriptions"
+    parsename = "majmin"
+    parsename2 = "transcriptions"
 
 expertname = ""
 NOTEADJUST = 0
@@ -70,6 +71,16 @@ print(DPATH)
 print(CPATH)
 print(PPATH)
 print(SPPATH)
+NPATH2 = "./parsed_"+parsename2+dur_append+"/"+expertname+"expert_"+encodingname+"_melodies.json"
+DPATH2 = "./parsed_"+parsename2+dur_append+"/"+expertname+"expert_"+encodingname+"_durs.json"
+CPATH2 = "./parsed_"+parsename2+dur_append+"/"+expertname+"expert_"+encodingname+"_chords.json"
+PPATH2 = "./parsed_"+parsename2+dur_append+"/"+expertname+"expert_"+encodingname+"_pos.json"
+SPPATH2 = "./parsed_"+parsename2+dur_append+"/"+expertname+"expert_"+encodingname+"_startpitches.json"
+print(NPATH2)
+print(DPATH2)
+print(CPATH2)
+print(PPATH2)
+print(SPPATH2)
 
 NUM_EMB = -1
 MIDI_MIN = -1
@@ -109,6 +120,7 @@ elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
     MAX_BLOCK_LENGTH = 2
 
 EPOCH_ITER = 100
+SWITCH_EPOCH = 1000
 SAVE_INTERVAL = 50
 RESET_INTERVAL = 500
 INIT_PROPORTION_SUPERVISED = 1.0
@@ -306,6 +318,24 @@ def main():
             sups = []
             unsups = []
             generations = []
-
+        if epoch == SWITCH_EPOCH:
+            print("------SAVING CURRENT MODEL------")
+            savefile = 'savedir/'+parsename2+'_model'
+            saver = tf.train.Saver()
+            saver.save(sess, savefile)
+            saver.export_meta_graph(savefile+'.meta')
+            print("------SWITCHING DATASETS------")
+            print(NPATH2)
+            print(DPATH2)
+            print(CPATH2)
+            print(PPATH2)
+            print(SPPATH2)
+            actuals = []
+            sups = []
+            unsups = []
+            generations = []
+            ii = 0
+            direction = 1
+            melodyseqs,durseqs,chordseqs,lows,highs,spseq = get_sequences(NPATH2,DPATH2,CPATH2,PPATH2,SPPATH2)
 if __name__ == '__main__':
     main()
