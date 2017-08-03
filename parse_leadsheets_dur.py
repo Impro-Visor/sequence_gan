@@ -150,7 +150,7 @@ def parseLeadsheets(ldir,verbose=False):
                     while note_count < lenm:
                         note = m[note_count]
                         note_count += 1
-                        print(index_count % 48, index_count/48,note[0],c[index_count][0],note_count,index_count)
+                        #print(index_count % 48, index_count/48,note[0],c[index_count][0],note_count,index_count)
                         dur = -1
                         otherdur = -1
                         if bits_or_onehot == BITS:
@@ -178,7 +178,7 @@ def parseLeadsheets(ldir,verbose=False):
                                 highest_note = note[0]
                             if note[0] < lowest_note:
                                 lowest_note = note[0]
-                            if note[0] >= MIDI_MIN or note[0] <= MIDI_MAX:
+                            if note[0] < MIDI_MIN or note[0] > MIDI_MAX:
                                 valid_leadsheet = False
                                 index_count += note[1]
                                 break
@@ -218,6 +218,7 @@ def parseLeadsheets(ldir,verbose=False):
                         #print(index_count % (48*4), index_count, index_count/48)
                         if index_count % (48*4) == 0:
                             note_count -= 1
+                            print(index_count,index_count / 48)
                             break
                         #if note[0] == None and note[1] >= 12:
                         #    break # found rest, end of phrase
