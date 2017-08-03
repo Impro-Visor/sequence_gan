@@ -18,7 +18,7 @@ interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
 parsename = "ii-V-I_leadsheets"
 if USING_TRANSCRIPTIONS:
-    parsename = "transcriptions"
+    parsename = "minors"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -32,12 +32,15 @@ ddir = parsedir + 'durs.json'
 spdir = parsedir + 'startpitches.json'
 outputDirList = [cdir,mdir,posdir,ckeydir,namedir,ddir,spdir]
 
+MAXLENGTH = 27
+MINLENGTH = 10
+
 MIDI_MIN = 55 # lowest note value found in trainingset
 MIDI_MAX = 89 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
 if USING_TRANSCRIPTIONS:
-    MIDI_MIN = 53#46#44#55
-    MIDI_MAX = 89#96#106#84
+    MIDI_MIN = 53#53#46#44#55
+    MIDI_MAX = 89#89#96#106#84
     NUM_NOTES = MIDI_MAX-MIDI_MIN+1
 
 SEQ_LEN = 96
@@ -121,7 +124,6 @@ def parseLeadsheets(ldir,verbose=False):
         try:
             c,m=leadsheet.parse_leadsheet(fdir)
             index_count = 0
-            skip_count = 0
             note_count = 0
             clen = len(c)
             print(len(c))
@@ -148,6 +150,7 @@ def parseLeadsheets(ldir,verbose=False):
                     while note_count < lenm:
                         note = m[note_count]
                         note_count += 1
+                        print(index_count % 48, index_count/48,note[0],c[index_count][0],note_count,index_count)
                         dur = -1
                         otherdur = -1
                         if bits_or_onehot == BITS:
@@ -175,8 +178,10 @@ def parseLeadsheets(ldir,verbose=False):
                                 highest_note = note[0]
                             if note[0] < lowest_note:
                                 lowest_note = note[0]
-                            assert note[0] >= MIDI_MIN
-                            assert note[0] <= MIDI_MAX
+                            if note[0] >= MIDI_MIN or note[0] <= MIDI_MAX:
+                                valid_leadsheet = False
+                                index_count += note[1]
+                                break
                         if isStart0 and note[0] != None:
                             splist_tuple0 = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
                             index_count += note[1]
@@ -186,7 +191,6 @@ def parseLeadsheets(ldir,verbose=False):
                             continue
                         elif isStart0 and note[0] == None:
                             index_count += note[1]
-                            skip_count += note[1]
                             continue
                         elif isStart1:
                             noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
@@ -211,12 +215,15 @@ def parseLeadsheets(ldir,verbose=False):
                             isStart3 = False
                             numNotes += 1
                             continue
-
-                        if note[0] == None and note[1] >= 12:
-                            break # found rest, end of phrase
-                        if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
-                            if numNotes >= 6:
-                                break
+                        #print(index_count % (48*4), index_count, index_count/48)
+                        if index_count % (48*4) == 0:
+                            note_count -= 1
+                            break
+                        #if note[0] == None and note[1] >= 12:
+                        #    break # found rest, end of phrase
+                        #if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
+                        #    if numNotes >= 6:
+                        #        break
 
                         cseq.append(c[index_count % clen]) # get the full chord vec for the slot
                         ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
@@ -230,113 +237,15 @@ def parseLeadsheets(ldir,verbose=False):
                         actNoteVal = nval - MIDI_MIN # scale down to start at 0
                         mseq.append(actNoteVal)
                         dseq.append(dur)
-                        index_count+=1
+                        index_count+=note[1]
 
                         pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
                         pval_high = 0.0 if isRest else 1-pval_low
                         pseq.append((pval_high,pval_low))
 
-                        for _ in range(note[1]-1):
-                            index_count+=1 # skip chords for sustain
                         numNotes += 1
-                        #if index_count-skip_count >= SEQ_LEN:
-                        #    break
 
-                elif PITCH_REP == PITCH_INTERVAL:
-                    prevVal = None
-                    isStart0 = True
-                    for note in m:
-                        if bits_or_onehot == BITS:
-                            dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                        elif bits_or_onehot == ONE_HOT:
-                            try:
-                                if note[1] not in DURATION_MAPPING.keys():
-                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                                dur = DURATION_MAPPING[note[1]]
-                            except KeyError:
-                                keyerror_count += 1
-                                valid_leadsheet = False
-                                break
-                                if verbose:
-                                    print("KEY ERROR: " + str(note[1]) + ". File: " + filename)
-                        if isStart0 and note[0] != None:
-                            prevVal = note[0]
-                            splist.append((note[0]-MIDI_MIN,dur))
-                            index_count += note[1]
-                            isStart0 = False
-                            continue
-                        elif isStart0 and note[0] == None:
-                            index_count += note[1]
-                            skip_count += note[1]
-                            continue
-                        cseq.append(c[index_count])
-                        ckeyseq.append(c[index_count][0]) # get chord key for the slot
-
-                        if note[0] != None:
-                            assert note[0] >= MIDI_MIN 
-                            assert note[0] <= MIDI_MAX
-                        restVal = MAX_INTERV+1
-                        isRest = note[0] == None
-                        nval = restVal if isRest else note[0]-prevVal
-                        nval = nval - MIN_INTERV # normalize to 0
-                        prevVal = prevVal if isRest else note[0]
-                        #if note[1] > 48:
-                        #    valid_leadsheet = False
-                        #    break
-                        mseq.append(nval)
-                        if nval in notes_captured.keys():
-                            notes_captured[nval] += 1
-                        else:
-                            notes_captured[nval] = 1
-                        dseq.append(dur)
-                        index_count+=1
-
-                        midival = MIDI_MAX+1 if isRest else note[0]
-                        pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
-                        pval_high = 0.0 if isRest else 1-pval_low
-                        pseq.append((pval_high,pval_low))
-
-                        for _ in range(note[1]-1):
-                            index_count+=1
-                        if index_count >= SEQ_LEN:
-                            break
-
-                elif PITCH_REP == PITCH_CHORD:
-                    for note in m:
-                        cseq = c[index_count]
-                        ckey = c[index_count][0]
-                        ckeyseq.append(ckey) # get chord key for the slot
-                        index_count+=1
-
-                        if note[0] != None:
-                            assert note[0] >= MIDI_MIN 
-                            assert note[0] <= MIDI_MAX
-                        restVal = 12 # pitches go 0-11
-                        isRest = note[0] == None
-                        nval = restVal if isRest else (note[0]-ckey) % 12
-                        #if isRest and note[1] > 24 or note[1] > 48:
-                        #    valid_leadsheet = False
-                        #    break
-                        if bits_or_onehot == BITS:
-                            dur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                        elif bits_or_onehot == ONE_HOT:
-                            dur = DURATION_MAPPING[note[1]]
-                        mseq.append(nval)
-                        dseq.append(dur)
-
-                        midival = MIDI_MAX+1 if isRest else note[0]
-                        pval_low = 0.0 if isRest else float(midival-MIDI_MIN)/float(MIDI_MAX-MIDI_MIN)
-                        pval_high = 0.0 if isRest else 1-pval_low
-                        pseq.append((pval_high,pval_low))
-
-                        for _ in range(note[1]-1):
-                            index_count+=1
-                        if index_count >= SEQ_LEN:
-                            break
-                totaldur = 0
-                for dur in dseq:
-                    totaldur += dur
-                if not valid_leadsheet or isStart0 or len(mseq) > 20 or len(mseq) < 10: #or len(mseq) < 10: #or len(mseq) > 30: #or index_count > clen:
+                if not valid_leadsheet or isStart0 or len(mseq) > MAXLENGTH or len(mseq) < MINLENGTH: #or len(mseq) < 10: #or len(mseq) > 30: #or index_count > clen:
                     bigrest_count += 1
                     continue
 
@@ -366,6 +275,13 @@ def parseLeadsheets(ldir,verbose=False):
                     namelist.append(filename)
                     dlist.append(dseq)
                     splist.append((newsplist_tuple3,newsplist_tuple2,newsplist_tuple1,newsplist_tuple0))
+
+            print(len(c))
+            print(len(m))
+            totaldur = 0
+            for n in m:
+                totaldur+=n[1]
+            print(totaldur)
         except KeyError:
             if verbose:
                 print("KEY ERROR: "+filename)
