@@ -200,7 +200,7 @@ def get_sequences_onefile(allpath):
                 if len(seq) <= startseqsize:# or len(seq) > MAX_SEQ_LENGTH:
                     continue
                 startseq = seq[:startseqsize]
-                startseq.reverse()
+                #startseq.reverse()
                 seq = seq[startseqsize:]
                 noteseq = []
                 durseq = []
@@ -211,15 +211,16 @@ def get_sequences_onefile(allpath):
                 spseq = []# noteval, dur, beatpos, chordkey, otherdur
                 for pitch,beatpos,index in startseq:
                     dur = (beatpos-prevpos+48-1)%48 # actual durs are 1-48, but one-hotted is 0-47
-                    spseq.append([pitch,beatpos,dur, c[index][0],dur])
+                    spseq.append([pitch,dur,dur, c[index][0],dur])
                     prevpos = beatpos
                     #for _ in range(dur):
                     #    chordseq.append(c[index])
+                spseq.reverse()
                 seqdur = 0
                 for pitch,beatpos,index in seq:
                     noteseq.append(pitch)
-                    durseq.append(beatpos)
-                    dur = (beatpos-prevpos+48-1)%48+1 # -1 +1 for octaves
+                    dur = (beatpos-prevpos+48-1)%48 # -1 +1 for octaves, -1 for one-hot
+                    durseq.append(dur)
                     prevpos = beatpos
                     seqdur+=dur
                     for _ in range(dur):
@@ -377,7 +378,7 @@ def main():
         #if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
         #    print('###### FREEZING DISCRIMINATOR')
         #    skipD = True
-        if (latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY) or epoch > 60:
+        if (latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY) or epoch > 100:
             startUnsup = True
         if startUnsup:
             skipG = False

@@ -162,11 +162,6 @@ class RNN(object):
             self.d_embeddings_chord = tf.Variable(self.init_matrix([self.num_emb_chord,self.emb_dim_chord_d]))
             self.d_params.append(self.d_embeddings_chord)
 
-            self.d_recurrent_unit = self.create_lstm_layer(self.hidden_dim_d, self.num_features_noblock_d, self.d_params)
-
-            # Output unit mapping h_t to class prediction logits
-            self.d_classifier_unit = self.create_classifier_unit_d(self.d_params)
-
             # Initial horizontal inputs for discriminator recurrent units
             self.d_h0 = tf.Variable(self.init_vector([self.hidden_dim_d]))
             self.d_c0 = tf.Variable(self.init_vector([self.hidden_dim_d]))
@@ -435,7 +430,7 @@ class RNN(object):
 
         self.gen_x = self.gen_x.stack()
         self.gen_x_out = tf.identity(self.gen_x,name="gen_x_out")
-        emb_gen_x = tf.gather(self.d_embeddings, self.gen_x)
+        """emb_gen_x = tf.gather(self.d_embeddings, self.gen_x)
         ta_emb_gen_x = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
         ta_emb_gen_x = ta_emb_gen_x.unstack(emb_gen_x)
@@ -443,12 +438,12 @@ class RNN(object):
         emb_real_x = tf.gather(self.d_embeddings, self.x)
         ta_emb_real_x = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
-        ta_emb_real_x = ta_emb_real_x.unstack(emb_real_x)
+        ta_emb_real_x = ta_emb_real_x.unstack(emb_real_x)"""
 
         # discriminator on generated and real data: dur vars
         self.gen_x_dur = self.gen_x_dur.stack()
         self.gen_x_dur_out = tf.identity(self.gen_x_dur,name="gen_x_dur_out")
-        emb_gen_x_dur = tf.gather(self.d_embeddings_dur, self.gen_x_dur)
+        """emb_gen_x_dur = tf.gather(self.d_embeddings_dur, self.gen_x_dur)
         ta_emb_gen_x_dur = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
         ta_emb_gen_x_dur = ta_emb_gen_x_dur.unstack(emb_gen_x_dur)
@@ -456,8 +451,149 @@ class RNN(object):
         emb_real_x_dur = tf.gather(self.d_embeddings_dur, self.x_dur)
         ta_emb_real_x_dur = tensor_array_ops.TensorArray(
             dtype=tf.float32, size=self.sequence_length)
-        ta_emb_real_x_dur = ta_emb_real_x_dur.unstack(emb_real_x_dur)
+        ta_emb_real_x_dur = ta_emb_real_x_dur.unstack(emb_real_x_dur)"""
 
+
+        # Apply conv filters to real and gen seqs
+        self.conv_input_length = 4
+        self.length_of_pad = self.conv_input_length-1
+
+        self.combined_inputs_gen = tf.stack([self.gen_x,self.gen_x_dur],name="combined_inputs_gen")
+        self.padded_comb_gen = tf.concat([tf.cast(self.combined_inputs_gen,tf.float32),tf.zeros(shape=[2,self.length_of_pad])],axis=1,name="padded_comb_gen")
+
+        self.combined_inputs_real = tf.stack([self.x,self.x_dur],name="combined_inputs_real")
+        self.padded_comb_real = tf.concat([tf.cast(self.combined_inputs_real,tf.float32),tf.zeros(shape=[2,self.length_of_pad])],axis=1,name="padded_comb_real")
+
+        ta_chunks_gen = tensor_array_ops.TensorArray(
+            dtype=tf.float32, size=self.sequence_length,
+            dynamic_size=False, infer_shape=True)
+
+        ta_chunks_real = tensor_array_ops.TensorArray(
+            dtype=tf.float32, size=self.sequence_length,
+            dynamic_size=False, infer_shape=True)
+
+        def chunkify(i, seq, chunk_size, chunks_out):
+            startpoint = tf.stack([tf.constant(0,dtype=tf.int32),i])
+            chunk = tf.slice(seq,startpoint,chunk_size)
+            chunks_out = chunks_out.write(i, chunk)
+            return i+1, seq, chunk_size, chunks_out
+
+
+        # chunks Shape: [seqlen, 2, conv_input_length]
+        i,seq,chunk_size, self.gen_chunks = control_flow_ops.while_loop(
+            cond=lambda i,seq,chunk_size, chunks_out: i < self.sequence_length,
+            body=chunkify,
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.padded_comb_gen, [2,self.conv_input_length], ta_chunks_gen))
+
+        # chunks Shape: [seqlen, 2, conv_input_length]
+        i,seq,chunk_size, self.real_chunks = control_flow_ops.while_loop(
+            cond=lambda i,seq,chunk_size, chunks_out: i < self.sequence_length,
+            body=chunkify,
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.padded_comb_real, [2,self.conv_input_length], ta_chunks_real))
+
+        # Output Tensor Shape: [seqlen*2 (1st half gen, 2nd half real), 2, conv_input_length]
+        self.comb_chunks = tf.concat([self.gen_chunks.stack(),self.real_chunks.stack()],0)
+
+        # Output Tensor Shape: [seqlen*2, 2, conv_input_length, 1]
+        self.conv_input = tf.expand_dims(self.comb_chunks,3)
+
+        # Input Tensor Shape: [batch_size = self.sequence_length*2, 2, conv_input_length, channels = 1]
+        # Output Tensor Shape: ["","","",channels = num filters]
+
+        self.d_conv1_num_filters = 50
+        self.d_conv1_k4 = tf.layers.conv2d(inputs=self.conv_input,filters = self.d_conv1_num_filters, kernel_size=[2,4],activation = tf.nn.relu,padding="same",name="d_conv1_k4")
+
+        # Input Tensor Shape: [seqlen*2, 2, cil, num filters]
+        # Output Tensor Shape: [seqlen*2, 2, cil/2, num_filters]
+        self.d_pool1_k4 = tf.layers.max_pooling2d(inputs=self.d_conv1_k4,pool_size=[1,2],strides=2,padding="same",name="d_pool1_k4")
+
+        # Input Tensor Shape: [batch_size = seqlen*2,2,cil/2, channels = old num filters]
+        # Output Tensor Shape: ["","","",channels = new num filters]
+        self.d_conv2_num_filters = 50
+        self.d_conv2_k4 = tf.layers.conv2d(inputs=self.d_pool1_k4,filters = self.d_conv2_num_filters, kernel_size=[2,4],activation = tf.nn.relu,padding="same",name="d_conv2_k4")
+
+        # Input Tensor Shape: [seqlen*2, 2, cil/2, num filters]
+        # Output Tensor Shape: [seqlen*2, 2, cil/4, num_filters]
+        self.d_pool2_k4 = tf.layers.max_pooling2d(inputs=self.d_conv2_k4,pool_size=[1,2],strides=2,padding="same",name="d_pool2_k4")
+
+        """
+        # Input Tensor Shape: [batch_size = 1, seq_length/4, 2 (notes,durs), channels = 1]
+        # Output Tensor Shape: ["","","",channels = num filters]
+        self.d_conv3_k4 = tf.layers.conv2d(inputs=self.d_pool2_k4,filters = 10, kernel_size=[2,4],activation = tf.nn.relu,padding="same",name="d_conv3_k4")
+
+        # Input Tensor Shape: [1, seq_length/4, 2, num filters]
+        # Output Tensor Shape: [1, seq_length/8, 2, num_filters]
+        self.d_pool3_k4 = tf.layers.max_pooling2d(inputs=self.d_conv3_k4,pool_size=[1,2],strides=2,padding="same",name="d_pool3_k4")"""
+
+        self.conv_flats1 = tf.contrib.layers.flatten(self.d_pool1_k4)
+        self.conv_flats2 = tf.contrib.layers.flatten(self.d_pool2_k4)
+        self.conv_flats_all = tf.concat([self.conv_flats1,self.conv_flats2],axis=1)
+        self.conv_flats_gen,self.conv_flats_real = tf.split(self.conv_flats_all,2,axis=0)
+
+        """
+        # Input Tensor Shape: [batch_size = 1, seq_length, 2 (notes,durs), channels = 1]
+        # Output Tensor Shape: ["","","",channels = num filters]
+        self.d_conv1_k2 = tf.layers.conv2d(inputs=self.gen_x_both,filters = 10, kernel_size=[2,2],activation = tf.nn.relu,padding="same",name="d_conv1_k2")
+
+        # Input Tensor Shape: [1, seq_length, 2, num filters]
+        # Output Tensor Shape: [1, seq_length/2, 2, num_filters]
+        self.d_pool1_k2 = tf.layers.max_pooling2d(inputs=self.d_conv1_k2,pool_size=[1,2],strides=2,padding="same",name="d_pool1_k2")
+
+        # Input Tensor Shape: [batch_size = 1, seq_length/2, 2 (notes,durs), channels = 1]
+        # Output Tensor Shape: ["","","",channels = num filters]
+        self.d_conv2_k2 = tf.layers.conv2d(inputs=self.d_pool1_k2,filters = 10, kernel_size=[2,2],activation = tf.nn.relu,padding="same",name="d_conv2_k2")
+
+        # Input Tensor Shape: [1, seq_length/2, 2, num filters]
+        # Output Tensor Shape: [1, seq_length/4, 2, num_filters]
+        self.d_pool2_k2 = tf.layers.max_pooling2d(inputs=self.d_conv2_k2,pool_size=[1,2],strides=2,padding="same",name="d_pool2_k2")
+
+        # Input Tensor Shape: [batch_size = 1, seq_length/4, 2 (notes,durs), channels = 1]
+        # Output Tensor Shape: ["","","",channels = num filters]
+        self.d_conv3_k2 = tf.layers.conv2d(inputs=self.d_pool2_k2,filters = 10, kernel_size=[2,2],activation = tf.nn.relu,padding="same",name="d_conv3_k2")
+
+        # Input Tensor Shape: [1, seq_length/4, 2, num filters]
+        # Output Tensor Shape: [1, seq_length/8, 2, num_filters]
+        self.d_pool3_k2 = tf.layers.max_pooling2d(inputs=self.d_conv3_k2,pool_size=[1,2],strides=2,padding="same",name="d_pool3_k2")"""
+
+        self.num_features_noblock_d = (0 +
+                                    + self.hidden_dim_d # h
+                                    + self.hidden_dim_d # c, peephole
+                                    + self.d_conv1_num_filters*int(self.conv_input_length/2) # num features
+                                    + self.d_conv2_num_filters*int(self.conv_input_length/4)
+                                    )#-self.hidden_dim_b
+        with tf.variable_scope('discriminator'):
+            self.d_recurrent_unit = self.create_lstm_layer(self.hidden_dim_d, self.num_features_noblock_d, self.d_params)
+
+            # Output unit mapping h_t to class prediction logits
+            self.d_classifier_unit = self.create_classifier_unit_d(self.d_params)
+
+        def _d_recurrence_cnn(i, conv_o, pred, h_tm1, c_tm1):
+            conv_features = conv_o[i]
+            inputs_recurr = tf.expand_dims(conv_features,1)
+            rh_tm1 = tf.expand_dims(h_tm1, 1)
+            rc_tm1 = tf.expand_dims(c_tm1, 1)
+
+            h_t,c_t = self.d_recurrent_unit(rh_tm1,inputs_recurr,rc_tm1)
+            h_t = tf.reshape(h_t, [self.hidden_dim_d])
+            c_t = tf.reshape(c_t, [self.hidden_dim_d])
+
+            y_t = self.d_classifier_unit(h_t)
+            pred = pred.write(i, y_t)
+
+            return i+1, conv_o, pred, h_t, c_t
+
+
+        i,conv_o,self.d_gen_predictions,h_tm1,c_tm1 = control_flow_ops.while_loop(
+            cond=lambda i,conv_o, pred,h_tm1,c_tm1: i < self.sequence_length,
+            body=_d_recurrence_cnn,
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.conv_flats_gen, d_gen_predictions,self.d_h0,self.d_c0))
+
+        i,conv_o,self.d_real_predictions,h_tm1,c_tm1 = control_flow_ops.while_loop(
+            cond=lambda i,conv_o, pred,h_tm1,c_tm1: i < self.sequence_length,
+            body=_d_recurrence_cnn,
+            loop_vars=(tf.constant(0, dtype=tf.int32),self.conv_flats_real, d_real_predictions,self.d_h0,self.d_c0))
+
+        """
         # discriminator recurrence
         def _d_recurrence(i,beat_count,prev_interval, prev_pitch_chord,
             chordkey_vec, chordnote_vec, inputs_lows, inputs_highs,           
@@ -549,12 +685,12 @@ class RNN(object):
                 tf.constant(1,dtype=tf.int32), self.p0, self.gen_x,
                 ta_emb_gen_x, ta_emb_gen_x_dur,self.d_h0,self.d_c0, 
                 self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
-                d_gen_predictions))
+                d_gen_predictions))"""
         self.d_gen_predictions = tf.reshape(
                 self.d_gen_predictions.stack(),
                 [self.sequence_length])
         self.d_gen_predictions_out = tf.identity(self.d_gen_predictions,name="d_gen_predictions_out")
-
+        """
         i,beat_count,prev_interval, prev_pitch_chord,\
         chordkey_vec, chordnote_vec, inputs_lows, inputs_highs,\
         a_count, prev_a, durs,\
@@ -580,7 +716,7 @@ class RNN(object):
                 tf.constant(1,dtype=tf.int32),self.p0,self.x,
                 ta_emb_real_x, ta_emb_real_x_dur,self.d_h0,self.d_c0, 
                 self.p1,self.p2,self.p3,self.d1,self.d2,self.d3,
-                d_real_predictions))
+                d_real_predictions))"""
         self.d_real_predictions = tf.reshape(
                 self.d_real_predictions.stack(),
                 [self.sequence_length])
@@ -845,8 +981,8 @@ class RNN(object):
 
         self.d_gen_grad = tf.gradients(self.d_gen_loss, self.d_params)
         self.d_real_grad = tf.gradients(self.d_real_loss, self.d_params)
-        self.d_gen_updates = d_opt.apply_gradients(zip(self.d_gen_grad, self.d_params))
-        self.d_real_updates = d_opt.apply_gradients(zip(self.d_real_grad, self.d_params))
+        self.d_gen_updates = d_opt.minimize(self.d_gen_loss) #d_opt.apply_gradients(zip(self.d_gen_grad, self.d_params))
+        self.d_real_updates = d_opt.minimize(self.d_real_loss) #d_opt.apply_gradients(zip(self.d_real_grad, self.d_params))
 
         self.reward_grad = tf.gradients(self.reward_loss, [self.expected_reward])
         self.reward_updates = reward_opt.apply_gradients(zip(self.reward_grad, [self.expected_reward]))
@@ -889,6 +1025,8 @@ class RNN(object):
         d1 = n1[1]
         d2 = n2[1]
         d3 = n3[1]
+        x = np.ones(sequence_length).tolist()
+        x_dur = np.ones(sequence_length).tolist()
         outputs = session.run(
                 [self.g_updates, self.reward_updates, self.g_loss,
                  self.expected_reward, self.gen_x, self.gen_x_dur],
@@ -897,7 +1035,7 @@ class RNN(object):
                            self.sequence_length: sequence_length,
                            self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                            self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
-                           self.start_chordkey:start_chordkey, self.start_dura:start_dura})
+                           self.start_chordkey:start_chordkey, self.start_dura:start_dura,self.x:x,self.x_dur:x_dur})
         return outputs
 
     def train_d_gen_step(self, session,lengths,chordkeys,chordkeys_onehot,chordnotes,sequence_length,n0,n1,n2,n3):
@@ -911,14 +1049,16 @@ class RNN(object):
         d1 = n1[1]
         d2 = n2[1]
         d3 = n3[1]
+        x = np.ones(sequence_length).tolist()
+        x_dur = np.ones(sequence_length).tolist()
         outputs = session.run(
-                [self.d_gen_updates, self.d_gen_loss],
+                [self.d_gen_updates, self.d_gen_loss, self.d_gen_predictions_out],
                 feed_dict={self.lengths: lengths,
                            self.chordKeys: chordkeys, self.chordKeys_onehot: chordkeys_onehot, self.chordNotes: chordnotes,
                            self.sequence_length: sequence_length,
                            self.p0:p0,self.p1:p1,self.p2:p2,self.p3:p3,
                            self.d0:d0,self.d1:d1,self.d2:d2,self.d3:d3, 
-                           self.start_chordkey:start_chordkey, self.start_dura:start_dura})
+                           self.start_chordkey:start_chordkey, self.start_dura:start_dura,self.x:x,self.x_dur:x_dur})
         return outputs
 
     def train_d_real_step(self, session, lengths,x, x_dur,chordkeys,chordkeys_onehot,chordnotes,low,high,sequence_length,n0,n1,n2,n3):
@@ -932,7 +1072,7 @@ class RNN(object):
         d1 = n1[1]
         d2 = n2[1]
         d3 = n3[1]
-        outputs = session.run([self.d_real_updates, self.d_real_loss],
+        outputs = session.run([self.d_real_updates, self.d_real_loss, self.d_real_predictions_out],
                               feed_dict={self.x: x, self.x_dur: x_dur,
                                          self.lengths: lengths,
                                          self.chordKeys:chordkeys, self.chordKeys_onehot:chordkeys_onehot,self.chordNotes:chordnotes, self.lows:low, self.highs:high,

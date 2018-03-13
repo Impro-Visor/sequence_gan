@@ -1,6 +1,9 @@
 import leadsheet
 import os
 import json
+import roadmap_parser
+import constants
+import copy
 
 
 USING_TRANSCRIPTIONS = True
@@ -19,7 +22,7 @@ PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord =
 parsename = "ii-V-I_leadsheets"
 FOUR_BAR_CUT = False
 if USING_TRANSCRIPTIONS:
-    parsename = "transcriptions"
+    parsename = "leadsheets_bricked_all2"
 ldir = "./"+parsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
@@ -31,20 +34,21 @@ ckeydir = parsedir + "chordkeys.json"
 namedir = parsedir + 'names.json'
 ddir = parsedir + 'durs.json'
 spdir = parsedir + 'startpitches.json'
+alldir = parsedir + 'features.json'
 outputDirList = [cdir,mdir,posdir,ckeydir,namedir,ddir,spdir]
 
-MAXLENGTH = 27
-MINLENGTH = 10
+MAXLENGTH = 20
+MINLENGTH = 8
 
-MIDI_MIN = 55 # lowest note value found in trainingset
-MIDI_MAX = 89 # highest note value found in trainingset
+# Middle C is C5 = 60
+
+MIDI_MIN = 48 # lowest note value found in trainingset
+MIDI_MAX = 96 # highest note value found in trainingset
 NUM_NOTES = MIDI_MAX-MIDI_MIN+1 # number of distinct notes in trainingset
 if USING_TRANSCRIPTIONS:
-    MIDI_MIN = 53#53#46#44#55
-    MIDI_MAX = 89#89#96#106#84
+    MIDI_MIN = 36#55#53#53#46#44#55
+    MIDI_MAX = 108#82#89#89#96#106#84
     NUM_NOTES = MIDI_MAX-MIDI_MIN+1
-
-SEQ_LEN = 96
 
 MIN_INTERV = -13
 MAX_INTERV = 14
@@ -106,6 +110,11 @@ def parseLeadsheets(ldir,verbose=False):
     namelist = []
     dlist = []
     splist = []
+    alist = []
+    mlist_noskip = []
+    poslist_noskip = []
+    tlist_skip = []
+    tlist_noskip = []
     if not ldir.endswith("/"):
         ldir += "/"
     if PITCH_REP == PITCH_MIDI:
@@ -115,200 +124,368 @@ def parseLeadsheets(ldir,verbose=False):
     elif PITCH_REP == PITCH_CHORD:
         print("PITCH: CHORD")
 
-    max_length = 0
-    notes_captured = {}
-    lowest_note = 200
-    highest_note = 0
-    for filename in os.listdir(ldir):
-        fdir = ldir+filename
-        print(fdir)
+    ##################### Get roadmaps to get chords & bricks
+
+    # Clear temp directories
+    folder = './temp_leadsheets/'
+    for the_file in os.listdir(folder):
+        file_path = os.path.join(folder, the_file)
         try:
+            if os.path.isfile(file_path):
+                os.unlink(file_path)
+            #elif os.path.isdir(file_path): shutil.rmtree(file_path)
+        except Exception as e:
+            print(e)
+
+    # Generate roadmaps in temp directories
+    max_length = 0 # For tracking purposes, usually 24 is good
+    lowest_note = 200 # For tracking purposes
+    highest_note = 0 # For tracking purposes
+    roadmaps = roadmap_parser.generateRoadmaps(ldir,"./temp_leadsheets",doTranspose=False)
+
+    ##################### Grab chords and durations from roadmaps
+    # i (leadsheet index)
+    # 0 ident (leadsheet), 1 roadmap for leadsheet
+    # 0 ident (roadmap), 1 actual roadmap content
+    # 0 blocks list
+    # 0 ident (blocks), 1 actual blocks content
+    # Chord durations are 480 for 1 measure
+    rcdlist = []
+    totalbrickdur = 0
+    numChords = 0
+    numBricks = 0
+    possiblepitches = {}
+    for j in range(len(roadmaps)):
+        bricks = roadmaps[j][1][1][0][1]
+        chordsdurs = []
+        for brick in bricks:
+            chordsdurs_brick = []
+            chords = roadmap_parser.chordFinder(brick,durOn=True)
+            numChords += len(chords)
+            for i in range(len(chords)):
+                #try:
+                cval = leadsheet.parse_chord(chords[i][0])
+                # except KeyError:
+                #     print("KeyError at Roadmap ",j)
+                #     print(os.listdir(ldir)[j])
+                #     return
+                dur = int(int(chords[i][1])/constants.RESOLUTION_SCALAR)
+                totalbrickdur += dur
+                chordsdurs_brick.append([cval,dur])
+            chordsdurs.append(chordsdurs_brick)
+        rcdlist.append(chordsdurs)
+    
+    #################### Parse features for each leadsheet
+    roadmap_counter = -1
+    for filename in os.listdir(ldir):
+        """
+        Parsing strategy:
+
+        Want these features: clist, mlist,poslist,ckeylist,namelist,dlist,splist
+        1. clist: chords, 1 per note
+        2. mlist: note pitches
+        3. poslist: list of (low,high) relative pitch positions
+        4. ckeylist: list of pitches in the chord
+        5. namelist: list of filenames
+        6. dlist: list of durations (or beat positions)
+        7. splist: list of starting note tuples (pitch, duration, beat pos, chord key, other dur)
+        8. alist: list of attacks
+
+        Parsing strategy:
+        1. Parse leadsheet (segmented into 48 timeslots) into c (chord keys and notes), m (notes).
+        2. Calculate pos for each m
+        3. 
+        """
+        roadmap_counter += 1
+        chordsdurs = rcdlist[roadmap_counter]
+        fdir = ldir+filename
+        try:
+
+            # Parse leadsheet    
             c,m=leadsheet.parse_leadsheet(fdir)
-            index_count = 0
-            note_count = 0
-            clen = len(c)
-            print(len(c))
-            print(len(m))
-            totaldur = 0
-            for n in m:
-                totaldur+=n[1]
-            print(totaldur)
-            lenm = len(m)
-            while note_count < lenm:
-                mseq = []
-                pseq = []
-                cseq = []
-                ckeyseq = []
-                dseq = []
-                valid_leadsheet = True
-                if PITCH_REP == PITCH_MIDI:
-                    isStart0 = True
-                    isStart1 = False
-                    isStart2 = False
-                    isStart3 = False
-                    startcindex = index_count
-                    numNotes = 0
-                    while note_count < lenm:
-                        note = m[note_count]
-                        note_count += 1
-                        #print(index_count % 48, index_count/48,note[0],c[index_count][0],note_count,index_count)
-                        dur = -1
-                        otherdur = -1
-                        if bits_or_onehot == BITS:
-                            newdur = int(round(note[1]*WHOLE_NOTE_DURATION/48.0))
-                            bindur = bin(newdur)[2:]
-                            assert len(bindur) <= 7
-                            bindur = '0'*(NUM_BITS-len(bindur))+bindur
-                            dur = [int(x) for x in bindur]
-                        elif bits_or_onehot == ONE_HOT:
-                            dur = (index_count+note[1]) % 48#DURATION_MAPPING[note[1]]
-                            otherdur = note[1]-1
-                        
-                        if note[0] != None:
-                            if note[0] > highest_note:
-                                highest_note = note[0]
-                            if note[0] < lowest_note:
-                                lowest_note = note[0]
-                            if note[0] < MIDI_MIN or note[0] > MIDI_MAX:
-                                valid_leadsheet = False
-                                index_count += note[1]
-                                break
-                        if isStart0 and note[0] != None:
-                            splist_tuple0 = (note[0]-MIDI_MIN,dur,index_count % 48,c[index_count % clen][0],otherdur)
-                            index_count += note[1]
-                            isStart0 = False
-                            isStart1 = True
-                            numNotes += 1
-                            continue
-                        elif isStart0 and note[0] == None:
-                            index_count += note[1]
-                            continue
-                        elif isStart1:
-                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
-                            splist_tuple1 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
-                            index_count += note[1]
-                            isStart1 = False
-                            isStart2 = True
-                            numNotes += 1
-                            continue
-                        elif isStart2:
-                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
-                            splist_tuple2 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
-                            index_count += note[1]
-                            isStart2 = False
-                            isStart3 = True
-                            numNotes += 1
-                            continue
-                        elif isStart3:
-                            noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
-                            splist_tuple3 = (noteval,dur,index_count % 48,c[index_count % clen][0],otherdur)
-                            index_count += note[1]
-                            isStart3 = False
-                            numNotes += 1
-                            continue
 
-                        if FOUR_BAR_CUT:
-                            if index_count % (48*4) == 0:
-                                note_count -= 1
-                                print(index_count,index_count / 48)
-                                break
-                        else:
-                            if note[0] == None and note[1] >= 12:
-                                note_count -= 1
-                                #print(index_count,index_count / 48,c[index_count%clen][0])
-                                break # found rest, end of phrase
-                            if (note[0] == None and note[1] >= 6) or (note[1] >= 24):
-                                if numNotes >= 6:
-                                    note_count -= 1
-                                    #print(index_count,index_count / 48,c[index_count % clen][0])
-                                    break
-
-                        cseq.append(c[index_count % clen]) # get the full chord vec for the slot
-                        ckeyseq.append(c[index_count % clen][0]) # get chord key for the slot
-
-                        restVal = MIDI_MAX+1
-                        isRest = note[0] == None
-                        nval = restVal if isRest else note[0]
-                        #if note[1] > 48:
-                        #    valid_leadsheet = False
-                        #    break
-                        actNoteVal = nval - MIDI_MIN # scale down to start at 0
-                        mseq.append(actNoteVal)
-                        dseq.append(dur)
-                        index_count+=note[1]
-
-                        pval_low = 0.0 if isRest else float(actNoteVal)/float(MIDI_MAX-MIDI_MIN)
-                        pval_high = 0.0 if isRest else 1-pval_low
-                        pseq.append((pval_high,pval_low))
-
-                        numNotes += 1
-
-                if not valid_leadsheet or isStart0 or len(mseq) > MAXLENGTH or len(mseq) < MINLENGTH: #or len(mseq) < 10: #or len(mseq) > 30: #or index_count > clen:
-                    bigrest_count += 1
-                    continue
-
-                for keydiff in range(12):
-                    newc = [((x[0]+keydiff) % 12,x[1]) for x in cseq]
-                    newm = [(note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) for note in mseq]
-                    newp = [((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newm]
-                    newsplist_tuple0 = list(splist_tuple0)
-                    newsplist_tuple0[0] = newsplist_tuple0[0]+keydiff if (newsplist_tuple0[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple0[0]+keydiff-12
-                    newsplist_tuple0[3] = (newsplist_tuple0[3]+keydiff) % 12
-                    newsplist_tuple1 = list(splist_tuple1)
-                    newsplist_tuple1[0] = newsplist_tuple1[0]+keydiff if (newsplist_tuple1[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple1[0]+keydiff-12
-                    newsplist_tuple1[3] = (newsplist_tuple1[3]+keydiff) % 12
-                    newsplist_tuple2 = list(splist_tuple2)
-                    newsplist_tuple2[0] = newsplist_tuple2[0]+keydiff if (newsplist_tuple2[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple2[0]+keydiff-12
-                    newsplist_tuple2[3] = (newsplist_tuple2[3]+keydiff) % 12
-                    newsplist_tuple3 = list(splist_tuple3)
-                    newsplist_tuple3[0] = newsplist_tuple3[0]+keydiff if (newsplist_tuple3[0]+keydiff <= MIDI_MAX - MIDI_MIN) else newsplist_tuple3[0]+keydiff-12
-                    newsplist_tuple3[3] = (newsplist_tuple3[3]+keydiff) % 12
-                    numParsed += 1
-                    clist.append(newc)
-                    mlist.append(newm)
-                    if max_length < len(mseq):
-                        max_length = len(mseq)
-                    poslist.append(newp)
-                    ckeylist.append(ckeyseq)
-                    namelist.append(filename)
-                    dlist.append(dseq)
-                    splist.append((newsplist_tuple3,newsplist_tuple2,newsplist_tuple1,newsplist_tuple0))
-
-            print(len(c))
-            print(len(m))
-            totaldur = 0
-            for n in m:
-                totaldur+=n[1]
-            print(totaldur)
         except KeyError:
             if verbose:
                 print("KEY ERROR: "+filename)
             keyerror_count+=1
+            continue
         except AssertionError:
             if verbose:
                 print("ASSERT ERROR: " +filename)
             asserterror_count+=1
+            continue
+        try:
+            totalnotedur = 0
+            for note in m:
+                totalnotedur+=note[1]
+            brick_durcount = 0
+            actual_chordsdurs = []
+            brick_index = 0
+            while brick_durcount <= totalnotedur:
+                chordsdurs_brick = chordsdurs[brick_index % len(chordsdurs)]
+                brick_index += 1
+                actual_chordsdurs_brick = []
+                for j in range(len(chordsdurs_brick)):
+                    chorddur = chordsdurs_brick[j]
+                    brick_dur = int(chorddur[1])
+                    brick_c = chorddur[0]
+                    if brick_c != c[brick_durcount % len(c)]:
+                        continue
+                    brick_durcount += brick_dur
+                    actual_chordsdurs_brick.append(chorddur)
+                actual_chordsdurs.append(actual_chordsdurs_brick)
+
+            # Segment sequences by brick endtimes
+            brick_endtimes = []
+            timecount = 0
+            for chordsdurs_brick in actual_chordsdurs:
+                brick_dur = 0
+                for chorddur in chordsdurs_brick:
+                    brick_dur += int(chorddur[1])
+                    pass
+                timecount += int(brick_dur)
+                brick_endtimes.append(timecount)
+                pass
+            print("Num bricks: ", len(brick_endtimes))
+            print("Last endtime: ",brick_endtimes[-1])
+            brick_count = 0 # Tracks brick count across leadsheet
+            
+            # Repeat chords until they match the notes for each timestep
+            beat_positions = []
+            attacks = []
+            pitches = []
+            pitches_skip = []
+            clen = len(c)
+            totaldur = 0
+            seq_noskip = []
+            seq_skip = []
+            seqs_noskip = []
+            seqs_skip = []
+            for note in m:
+                #print(str(brick_count) + "     " + str(len(seqs_skip)))
+                pitch = note[0] if note[0] != None else MIDI_MAX+1
+                pitch -= MIDI_MIN
+                dur = note[1]
+                totaldur += dur
+                # Save general stats
+                beat_positions.append(totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR))
+                attacks.append(1)
+                pitches_skip.append(pitch)
+                pitches.append(pitch)
+
+                # Save segmented brick info
+                endtime = brick_endtimes[brick_count]
+                if totaldur > endtime:
+                    # We need to break this note into subparts to fit the bricks
+                    # End sequence at brick endtime
+                    bp = endtime % int(constants.WHOLE/constants.RESOLUTION_SCALAR)
+                    if bp in [11,17,23,29]:
+                        print("WUT1",bp)
+                    seq_skip.append([pitch, endtime % int(constants.WHOLE/constants.RESOLUTION_SCALAR),totaldur-dur])
+                    seq_noskip.append([pitch,1,totaldur-dur])
+                    for k in range(endtime-(totaldur-dur)-1):
+                        seq_noskip.append([pitch,0,totaldur-dur+k+1])
+                    # Save sequences and resetm 
+                    seqs_skip.append(seq_skip)
+                    seqs_noskip.append(seq_noskip)
+                    if max_length < len(seq_skip):# and len(seq_skip) < 30:
+                        max_length = len(seq_skip)
+                    seq_skip = []
+                    seq_noskip = []
+                    brick_count += 1
+                    # Add leftovers
+                    bp = (totaldur-endtime) % int(constants.WHOLE/constants.RESOLUTION_SCALAR)
+                    if bp in [11,17,23,29]:
+                        print("WUT2",bp)
+                    seq_skip.append([pitch, (totaldur-endtime) % int(constants.WHOLE/constants.RESOLUTION_SCALAR), endtime])
+                    seq_noskip.append([pitch,1,endtime])
+                    for k in range(totaldur-endtime-1):
+                        seq_noskip.append([pitch,0,endtime+k+1])                    
+                    # Update general attacks/pitches
+                    for _ in range(endtime-(totaldur-dur)-1):
+                        attacks.append(0)
+                        pitches.append(pitch)
+                    attacks.append(1)
+                    pitches.append(pitch)
+                    for _ in range(totaldur - endtime - 1):
+                        attacks.append(0)
+                        pitches.append(pitch)                        
+
+                else:
+                    # Update sequences as normal
+                    bp = totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR)
+                    if bp in [11,17,23,29]:
+                        print("WUT3",bp)
+                    seq_skip.append([pitch, totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR),totaldur-dur])
+                    seq_noskip.append([pitch,1,totaldur-dur])
+                    for k in range(dur-1):
+                        seq_noskip.append([pitch, 0,totaldur-dur+k+1])
+                    # Update general attacks/pitches
+                    for _ in range(dur-1):
+                        attacks.append(0)
+                        pitches.append(pitch)
+
+                if totaldur == endtime:
+                    # Brick finished: Save current sequences and reset
+                    seqs_skip.append(seq_skip)
+                    seqs_noskip.append(seq_noskip)
+                    if max_length < len(seq_skip):# and len(seq_skip) < 30:
+                        max_length = len(seq_skip)
+
+                    seqdur = 0
+                    if len(seq_skip)>4:
+                        prevbeatpos = seq_skip[4][1]
+                        for pitch,beatpos,index in seq_skip[4:]:
+                            seqdur += (beatpos - prevbeatpos+48) % 48
+                            prevbeatpos=beatpos
+                    if len(seq_skip) > 4 and seqdur < 48*4:
+                        for pitch,beatpos,index in seq_skip:
+                            note = [pitch]
+                            if note[0] != MIDI_MAX-MIDI_MIN+1 and note[0] < lowest_note:
+                                lowest_note = note[0]
+                            if note[0]!=MIDI_MAX-MIDI_MIN+1 and note[0] > highest_note:
+                                highest_note = note[0]
+
+                    seq_skip = []
+                    seq_noskip = []
+                    brick_count += 1
+
+
+            for i in range(totaldur-clen):
+                c.append(c[i % clen])
+            print("Last index: ",len(c))
+            sps = []
+            for i in range(4):
+                note = m[i]
+                noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
+                dur = note[1]
+                spi = [noteval, beat_positions[i],dur,c[i][0],dur]
+                if beat_positions[i] in [11,17,23,29]:
+                    print("WUT", beat_positions[i])
+                sps.append(spi)
+
+            """
+            clist.append(c)
+            mlist.append(pitches_skip)
+            poslist.append([(0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) for note in pitches_skip])
+            ckeylist.append([ctuple[0] for ctuple in c])
+            namelist.append(filename)
+            dlist.append(beat_positions)
+            splist.append(sps)
+            alist.append(attacks)
+            mlist_noskip.append(pitches)
+            poslist_noskip.append([(0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) for note in pitches])
+            """
+
+            # Transpose everything
+            newc = []
+            newpitches_skip = []
+            newp_skip = []
+            newckeys = []
+            newfilenames =[]
+            newbeats = []
+            newsps = []
+            newattacks = []
+            newpitches = []
+            newp = []
+            transposed_seqs_skip = []
+            transposed_seqs_noskip = []
+            for keydiff in range(12):     
+                holder = []
+                for i in range(len(seqs_skip)):
+                    seq_skip = copy.deepcopy(seqs_skip[i])
+                    for j in range(len(seq_skip)):
+                        note = seq_skip[j][0]
+                        if note != MIDI_MAX-MIDI_MIN+1:
+                            seq_skip[j][0] = (note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12)
+                        #if keydiff == 1:
+                        if keydiff < 6:
+                            if note not in possiblepitches.keys():
+                                possiblepitches[note]=0
+                            possiblepitches[note] += 1
+                    holder.append(seq_skip)
+                transposed_seqs_skip.append(holder)
+                holder = []
+                for i in range(len(seqs_noskip)):
+                    seq_noskip = copy.deepcopy(seqs_noskip[i])
+                    for j in range(len(seq_noskip)):
+                        note = seq_noskip[j][0]
+                        if note != MIDI_MAX-MIDI_MIN+1:
+                            seq_noskip[j][0] = (note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12)
+                    holder.append(seq_noskip)
+                transposed_seqs_noskip.append(holder)
+                newctemp = [((x[0]+keydiff) % 12,x[1]) for x in c]
+                newc.append(newctemp)
+                newckeys.append([ctuple[0] for ctuple in newctemp])
+                newfilenames.append(filename)
+                newbeats.append(beat_positions)
+                newattacks.append(attacks)
+                newpitches_skiptemp = [((note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) if note != MIDI_MAX-MIDI_MIN+1 else note) for note in pitches_skip]
+                newpitchestemp = [((note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) if note != MIDI_MAX-MIDI_MIN+1 else note) for note in pitches]
+                newpitches_skip.append(newpitches_skiptemp)
+                newpitches.append(newpitchestemp)
+                newp_skip.append([((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newpitches_skiptemp])
+                newp.append([((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newpitchestemp])
+                
+                newspstemp = []
+                for i in range(4):
+                    newsp = sps[i]
+                    if newsp[0] != MIDI_MAX-MIDI_MIN+1:
+                        newsp[0] = sps[i][0]+keydiff if (sps[i][0]+keydiff <= MIDI_MAX-MIDI_MIN) else sps[i][0]+keydiff-12
+                    newsp[3] = (sps[i][3]+keydiff) % 12
+                    newspstemp.append(newsp)               
+                newsps.append(newspstemp)
+            clist.append(newc)
+            mlist.append(newpitches_skip)
+            poslist.append(newp_skip)
+            ckeylist.append([ctuple[0] for ctuple in newc])
+            namelist.append(filename)
+            for bp in beat_positions:
+                if bp in [11,17,23,29]:
+                    print("WUT",bp)
+            dlist.append(beat_positions)
+            splist.append(newsps)
+            alist.append(attacks)
+            mlist_noskip.append(newpitches)
+            poslist_noskip.append(newp)
+            tlist_skip.append(transposed_seqs_skip)
+            tlist_noskip.append(transposed_seqs_noskip)
+            numParsed += len(seqs_skip)
+        except KeyError:
+            print(filename)
+
     if verbose:
         print("Num key errors: " + str(keyerror_count))
         print("Num assert errors: " + str(asserterror_count))
-        print("Num leadsheets with too big rests: " + str(bigrest_count))
-        print("Num leadsheets successfully parsed: " + str(numParsed))
+        #print("Num bad base phrases (short, long, error): " + str(bigrest_count))
+        print("Num phrases successfully parsed: " + str(numParsed))
         print("Max length: " + str(max_length))
         print("Highest note: " + str(highest_note))
         print("Lowest note: " + str(lowest_note))
-        print(notes_captured)
-    return [clist, mlist,poslist,ckeylist,namelist,dlist,splist]
+        keys = list(possiblepitches.keys())
+        keys.sort()
+        for key in keys:
+            print(key,possiblepitches[key])
+    return {"full_chords":clist, 
+            "pitches_skip":mlist,
+            "pos_skip":poslist,
+            "chord_keys":ckeylist,
+            "namelist":namelist,
+            "durs":dlist,
+            "starts":splist,
+            "attacks":alist,
+            "pitches_noskip":mlist_noskip,
+            "pos_noskip":poslist_noskip,
+            "transposed_seqs_skip":tlist_skip,
+            "transposed_seqs_noskip":tlist_noskip}
 
-def saveLeadsheets(parsedLists,outputDirs):
+def saveLeadsheets(features):
     """
     Save parsed leadsheets.
     """
-    for i in range(len(parsedLists)):
-        parsedList = parsedLists[i]
-        outputDir = outputDirs[i]
-        with open(outputDir,'w') as outfile:
-            json.dump(parsedList,outfile)
+    with open(alldir,'w') as outfile:
+        json.dump(features,outfile)
 
 if __name__ == '__main__':
-    parsedLists = parseLeadsheets(ldir,verbose=True)
-    saveLeadsheets(parsedLists=parsedLists,outputDirs=outputDirList)
+    features = parseLeadsheets(ldir,verbose=True)
+    saveLeadsheets(features)
