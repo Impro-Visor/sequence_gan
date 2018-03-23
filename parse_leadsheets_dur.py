@@ -19,11 +19,12 @@ INTERVAL = True
 CHORD = False
 interval_or_chord = INTERVAL
 PITCH_REP = PITCH_MIDI if PURE_PITCH else (PITCH_INTERVAL if interval_or_chord == INTERVAL else PITCH_CHORD)
-parsename = "ii-V-I_leadsheets"
+iiVIparsename = "ii-V-I_leadsheets"
 FOUR_BAR_CUT = False
 if USING_TRANSCRIPTIONS:
     parsename = "leadsheets_bricked_all2"
 ldir = "./"+parsename+"/"
+iiVIldir = "./"+iiVIparsename+"/"
 category = "pitchexpert_" if PITCH_REP == PITCH_MIDI else ("intervalexpert_" if PITCH_REP == PITCH_INTERVAL else "chordexpert_")
 encoding = "bit_" if bits_or_onehot == BITS else "onehot_"
 parsedir = "./parsed_"+parsename+"_dur/" + category + encoding
@@ -364,18 +365,188 @@ def parseLeadsheets(ldir,verbose=False):
                     print("WUT", beat_positions[i])
                 sps.append(spi)
 
-            """
-            clist.append(c)
-            mlist.append(pitches_skip)
-            poslist.append([(0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) for note in pitches_skip])
-            ckeylist.append([ctuple[0] for ctuple in c])
+            # Transpose everything
+            newc = []
+            newpitches_skip = []
+            newp_skip = []
+            newckeys = []
+            newfilenames =[]
+            newbeats = []
+            newsps = []
+            newattacks = []
+            newpitches = []
+            newp = []
+            transposed_seqs_skip = []
+            transposed_seqs_noskip = []
+            for keydiff in range(12):     
+                holder = []
+                for i in range(len(seqs_skip)):
+                    seq_skip = copy.deepcopy(seqs_skip[i])
+                    for j in range(len(seq_skip)):
+                        note = seq_skip[j][0]
+                        if note != MIDI_MAX-MIDI_MIN+1:
+                            seq_skip[j][0] = (note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12)
+                        #if keydiff == 1:
+                        if keydiff < 6:
+                            if note not in possiblepitches.keys():
+                                possiblepitches[note]=0
+                            possiblepitches[note] += 1
+                    holder.append(seq_skip)
+                transposed_seqs_skip.append(holder)
+                holder = []
+                for i in range(len(seqs_noskip)):
+                    seq_noskip = copy.deepcopy(seqs_noskip[i])
+                    for j in range(len(seq_noskip)):
+                        note = seq_noskip[j][0]
+                        if note != MIDI_MAX-MIDI_MIN+1:
+                            seq_noskip[j][0] = (note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12)
+                    holder.append(seq_noskip)
+                transposed_seqs_noskip.append(holder)
+                newctemp = [((x[0]+keydiff) % 12,x[1]) for x in c]
+                newc.append(newctemp)
+                newckeys.append([ctuple[0] for ctuple in newctemp])
+                newfilenames.append(filename)
+                newbeats.append(beat_positions)
+                newattacks.append(attacks)
+                newpitches_skiptemp = [((note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) if note != MIDI_MAX-MIDI_MIN+1 else note) for note in pitches_skip]
+                newpitchestemp = [((note+keydiff if (note+keydiff <= MIDI_MAX- MIDI_MIN) else note+keydiff-12) if note != MIDI_MAX-MIDI_MIN+1 else note) for note in pitches]
+                newpitches_skip.append(newpitches_skiptemp)
+                newpitches.append(newpitchestemp)
+                newp_skip.append([((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newpitches_skiptemp])
+                newp.append([((0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) ) for note in newpitchestemp])
+                
+                newspstemp = []
+                for i in range(4):
+                    newsp = sps[i]
+                    if newsp[0] != MIDI_MAX-MIDI_MIN+1:
+                        newsp[0] = sps[i][0]+keydiff if (sps[i][0]+keydiff <= MIDI_MAX-MIDI_MIN) else sps[i][0]+keydiff-12
+                    newsp[3] = (sps[i][3]+keydiff) % 12
+                    newspstemp.append(newsp)               
+                newsps.append(newspstemp)
+            clist.append(newc)
+            mlist.append(newpitches_skip)
+            poslist.append(newp_skip)
+            ckeylist.append([ctuple[0] for ctuple in newc])
             namelist.append(filename)
+            for bp in beat_positions:
+                if bp in [11,17,23,29]:
+                    print("WUT",bp)
             dlist.append(beat_positions)
-            splist.append(sps)
+            splist.append(newsps)
             alist.append(attacks)
-            mlist_noskip.append(pitches)
-            poslist_noskip.append([(0.0,0.0) if (note == MIDI_MAX-MIDI_MIN+1) else (float(note/float(MIDI_MAX-MIDI_MIN)),1.0-float(note/float(MIDI_MAX-MIDI_MIN))) for note in pitches])
-            """
+            mlist_noskip.append(newpitches)
+            poslist_noskip.append(newp)
+            tlist_skip.append(transposed_seqs_skip)
+            tlist_noskip.append(transposed_seqs_noskip)
+            numParsed += len(seqs_skip)
+        except KeyError:
+            print(filename)
+    if verbose:
+        print("Num key errors: " + str(keyerror_count))
+        print("Num assert errors: " + str(asserterror_count))
+        #print("Num bad base phrases (short, long, error): " + str(bigrest_count))
+        print("Num phrases successfully parsed: " + str(numParsed))
+        print("Max length: " + str(max_length))
+        print("Highest note: " + str(highest_note))
+        print("Lowest note: " + str(lowest_note))
+        keys = list(possiblepitches.keys())
+        keys.sort()
+        for key in keys:
+            print(key,possiblepitches[key])
+
+
+    # Thus far, we have parsed the leadsheets from transcriptions. We now parse the leadsheets from ii-V-Is.
+    #TODO
+    asserterror_count = 0
+    keyerror_count = 0
+    bigrest_count = 0
+    numParsed = 0
+    max_length = 0 # For tracking purposes, usually 24 is good
+    lowest_note = 200 # For tracking purposes
+    highest_note = 0 # For tracking purposes
+    possiblepitches = {}
+    for filename in os.listdir(iiVIldir):
+        fdir = iiVIldir+filename
+        try:
+            # Parse leadsheet    
+            c,m=leadsheet.parse_leadsheet(fdir)
+
+        except KeyError:
+            if verbose:
+                print("KEY ERROR: "+filename)
+            keyerror_count+=1
+            continue
+        except AssertionError:
+            if verbose:
+                print("ASSERT ERROR: " +filename)
+            asserterror_count+=1
+            continue
+        try:            
+            # Repeat chords until they match the notes for each timestep
+            beat_positions = []
+            attacks = []
+            pitches = []
+            pitches_skip = []
+            clen = len(c)
+            totaldur = 0
+            seq_noskip = []
+            seq_skip = []
+            seqs_noskip = []
+            seqs_skip = []
+            for note in m:
+                pitch = note[0] if note[0] != None else MIDI_MAX+1
+                pitch -= MIDI_MIN
+                dur = note[1]
+                totaldur += dur
+                # Save general stats
+                beat_positions.append(totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR))
+                attacks.append(1)
+                pitches_skip.append(pitch)
+                pitches.append(pitch)        
+
+                bp = totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR)
+                if bp in [11,17,23,29]:
+                    print("WUT3",bp)
+                seq_skip.append([pitch, totaldur % int(constants.WHOLE/constants.RESOLUTION_SCALAR),totaldur-dur])
+                seq_noskip.append([pitch,1,totaldur-dur])
+                for k in range(dur-1):
+                    seq_noskip.append([pitch, 0,totaldur-dur+k+1])
+                # Update general attacks/pitches
+                for _ in range(dur-1):
+                    attacks.append(0)
+                    pitches.append(pitch)
+
+            seqs_skip.append(seq_skip)
+            seqs_noskip.append(seq_noskip)
+            if max_length < len(seq_skip):# and len(seq_skip) < 30:
+                max_length = len(seq_skip)
+
+            seqdur = 0
+            if len(seq_skip)>4:
+                prevbeatpos = seq_skip[4][1]
+                for pitch,beatpos,index in seq_skip[4:]:
+                    seqdur += (beatpos - prevbeatpos+48) % 48
+                    prevbeatpos=beatpos
+            if len(seq_skip) > 4 and seqdur < 48*4:
+                for pitch,beatpos,index in seq_skip:
+                    note = [pitch]
+                    if note[0] != MIDI_MAX-MIDI_MIN+1 and note[0] < lowest_note:
+                        lowest_note = note[0]
+                    if note[0]!=MIDI_MAX-MIDI_MIN+1 and note[0] > highest_note:
+                        highest_note = note[0]
+
+            for i in range(totaldur-clen):
+                c.append(c[i % clen])
+            print("Last index: ",len(c))
+            sps = []
+            for i in range(4):
+                note = m[i]
+                noteval = MIDI_MAX+1-MIDI_MIN if note[0] == None else note[0]-MIDI_MIN
+                dur = note[1]
+                spi = [noteval, beat_positions[i],dur,c[i][0],dur]
+                if beat_positions[i] in [11,17,23,29]:
+                    print("WUT", beat_positions[i])
+                sps.append(spi)
 
             # Transpose everything
             newc = []
@@ -466,6 +637,8 @@ def parseLeadsheets(ldir,verbose=False):
         keys.sort()
         for key in keys:
             print(key,possiblepitches[key])
+
+
     return {"full_chords":clist, 
             "pitches_skip":mlist,
             "pos_skip":poslist,
@@ -483,6 +656,11 @@ def saveLeadsheets(features):
     """
     Save parsed leadsheets.
     """
+    if not os.path.exists(parsedir):
+        print("CREATED WRITE DIR")
+        os.makedirs(parsedir)
+    if not os.path.isdir(parsedir):
+        print("ERROR: WRITE DIR DOES NOT EXIST")
     with open(alldir,'w') as outfile:
         json.dump(features,outfile)
 

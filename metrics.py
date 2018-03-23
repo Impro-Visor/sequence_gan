@@ -257,15 +257,16 @@ def getSeqs(fname,isDur=False,isTimesteps=False):
             n1 = n1s[i]
             n2 = n2s[i]
             n3 = n3s[i]
-            n1[1] = (n0[1]+(n1[1]+1)) % 48
+            n1[1] = (n0[1]+1+(n1[1]+1)) % 48
             n2[1] = (n1[1]+(n2[1]+1)) % 48
             n3[1] = (n2[1]+(n3[1]+1)) % 48
+            n0[1] = (n0[1]+1) % 48
+        seqs_start_durs = [x[1] for x in n0s]
 
-        startbeat = n3s[1]
         newdurseqs = []
         for i in range(len(seqs_dur)):
             durseq = seqs_dur[i]
-            beat = 0#n3s[i][1]
+            beat = n3s[i][1]
             newdurseq = []
             for dur in durseq:
                 beat = (beat + (dur+1)) % 48
@@ -273,9 +274,6 @@ def getSeqs(fname,isDur=False,isTimesteps=False):
             newdurseqs.append(newdurseq)
         seqs_dur = newdurseqs
 
-
-        #for seq in seqs:
-        #    beatcount = 
 
 
     #seqs_startchordkeys = [(x[3],[1,0,0,0,1,0,0,1,0,0,0,0]) for x in n0s]
@@ -609,10 +607,10 @@ def calculateStats(seqs,seqs_dur,actual_durs,REST_VAL,doRM = False):
 
 def parse_reals(seqs,seqs_dur,seqs_chords,highs,lows,starts):
 
-    n0s = [x[0] for x in starts]
-    n1s = [x[1] for x in starts]
-    n2s = [x[2] for x in starts]
-    n3s = [x[3] for x in starts]
+    n0s = [x[3] for x in starts]
+    n1s = [x[2] for x in starts]
+    n2s = [x[1] for x in starts]
+    n3s = [x[0] for x in starts]
     seqs_startkeys = [x[0] for x in n0s]
     seqs_start_durs = [x[1] for x in n0s]
     seqs_startbeats = [x[2] for x in n0s]
@@ -621,24 +619,24 @@ def parse_reals(seqs,seqs_dur,seqs_chords,highs,lows,starts):
     return seqs,seqs_dur,seqs_chords,n0s,n1s,n2s,n3s,seqs_startkeys,seqs_start_durs,seqs_startbeats
 
 def main():
-    USING_GENS = False
+    USING_GENS = True
     USING_INTERVALS=False
     USING_REALS = False
-    USING_MAGENTA = True
+    USING_MAGENTA = False
     REST_VAL=108-36+1
     MIDI_OFFSET=36
     OCT_THRESHOLD=72
     if USING_GENS:
-        isTimesteps = False
+        isTimesteps = True
         isDur = False
-        fname = './deployer_gens_beatpos.json'#'/home/nic/sequence_gan/zbeatposition_stuff/gens_g99.json'
-        fdir = '/home/nic/0_beatpos/'
+        fname = './gens_g9.json'#'./deployer_gens_beatpos.json'#'/home/nic/sequence_gan/zbeatposition_stuff/gens_g99.json'
+        fdir = '/home/nic/0_beatpos3/'
         if isDur:
             fname = '/home/nic/sequence_gan/zduration_stuff/gens_g99.json'
-            fdir = '/home/nic/0_duration/'
+            fdir = '/home/nic/0_duration2/'
         elif isTimesteps:
-            fname = '/home/nic/sequence_gan/ztimestep_stuff/tgens_timestep_g27.json'
-            fdir = '/home/nic/0_timestep/'
+            fname = '/home/nic/sequence_gan/ztimestep_stuff/tgens_timestep_g30.json'#27.json'
+            fdir = '/home/nic/0_timestep2/'
         doRM = True
         print(fname)
         seqs,seqs_dur,seqs_chords,n0s,n1s,n2s,n3s,seqs_startkeys,seqs_start_durs,seqs_startbeats,actual_durs = getSeqs(fname,isTimesteps=isTimesteps,isDur=isDur)
@@ -654,7 +652,7 @@ def main():
             except Exception as e:
                 print(e)
         lss = writeLeadsheet(actseqs,actseqs_dur,actseqs_chords,midi_offset=MIDI_OFFSET,rpitch=REST_VAL,lsperdump=-1,fdir = fdir)
-        calculateStats(seqs,seqs_dur,actual_durs,REST_VAL,doRM=doRM)
+        #calculateStats(seqs,seqs_dur,actual_durs,REST_VAL,doRM=doRM)
     elif USING_REALS:
         MAX_SEQ_DUR_LENGTH = 48*4
         fname = "/home/nic/sequence_gan/parsed_leadsheets_bricked_all2_dur/pitchexpert_onehot_features.json"
@@ -663,8 +661,8 @@ def main():
         seqs,seqs_dur,seqs_chords,n0s,n1s,n2s,n3s,seqs_startkeys,seqs_start_durs,seqs_startbeats = parse_reals(seqs,seqs_dur,seqs_chords,highs,lows,starts)
         actseqs,actseqs_dur,actseqs_chords = generateLeadsheets(seqs,seqs_dur,seqs_chords,n0s,n1s,n2s,n3s,seqs_startkeys,seqs_start_durs,seqs_startbeats)
         actual_durs = calcDurs_training(seqs_dur,starts)
-        calculateStats(seqs,seqs_dur,actual_durs,REST_VAL)
-        if False:
+        #calculateStats(seqs,seqs_dur,actual_durs,REST_VAL)
+        if True:
             fdir = '/home/nic/0_corpus/'
             for the_file in os.listdir(fdir):
                 file_path = os.path.join(fdir, the_file)

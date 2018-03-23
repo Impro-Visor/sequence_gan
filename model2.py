@@ -25,12 +25,12 @@ class RNN(object):
         self.hidden_dim = hidden_dim        # Hidden layer size 
         self.hidden_dim_b = hidden_dim_b    # Hidden layer size for blocks
 
-        self.emb_dim_d = int(emb_dim/8)             # Discriminator embedding size for pitches
-        self.emb_dim_dur_d = int(emb_dim_dur/8)     # Discriminator embedding size for durations
-        self.emb_dim_dura_d = int(emb_dim_dura/8)   # Discriminator embedding size for alt durations
-        self.emb_dim_chord_d = int(emb_dim_chord/8) # Discriminator embedding size for chord keys
-        self.hidden_dim_d = int(hidden_dim/10)      # Hidden layer size for discriminator
-        self.hidden_dim_b_d = int(hidden_dim_b/10)  # Hidden layer size for discriminator blocsk
+        self.emb_dim_d = int(emb_dim)             # Discriminator embedding size for pitches
+        self.emb_dim_dur_d = int(emb_dim_dur)     # Discriminator embedding size for durations
+        self.emb_dim_dura_d = int(emb_dim_dura)   # Discriminator embedding size for alt durations
+        self.emb_dim_chord_d = int(emb_dim_chord) # Discriminator embedding size for chord keys
+        self.hidden_dim_d = int(hidden_dim)      # Hidden layer size for discriminator
+        self.hidden_dim_b_d = int(hidden_dim_b)  # Hidden layer size for discriminator blocsk
 
         self.num_hidden_layers = num_hidden_layers      # Number of hidden layers
         self.max_sequence_length = max_sequence_length  # Max sequence length over corpus

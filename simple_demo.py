@@ -106,7 +106,7 @@ EMB_DIM = 72
 EMB_DIM_DUR = 96
 EMB_DIM_DURA = 96
 EMB_DIM_CHORD = 24
-HIDDEN_DIM = 300 # 100 nodes is the min.
+HIDDEN_DIM = 400 # 100 nodes is the min.
 HIDDEN_DIM_B = 50
 NUMBER_HIDDEN_LAYERS = 1
 MAX_SEQ_LENGTH = 96
@@ -129,7 +129,7 @@ elif LEADSHEET_CHOICE == TRANSCRIPTIONS:
 EPOCH_ITER = 100
 SWITCH_EPOCH = -1
 SAVE_EPOCH = 100
-SAVE_INTERVAL = 10
+SAVE_INTERVAL = 100
 RESET_INTERVAL = 500
 INIT_PROPORTION_SUPERVISED = 1.0
 CURRICULUM_RATE = 0.1  # how quickly to move from supervised training to unsupervised
@@ -137,7 +137,7 @@ SUP_BASELINE = 0.0 # Decrease ratio of supervised training to this baseline rati
 TRAIN_ITER = EPOCH_ITER * 100000  # generator/discriminator alternating
 G_STEPS = 7  # how many times to train the generator each round
 D_STEPS = 1  # how many times to train the discriminator per generator steps
-G_LOSS_BOUNDARY = 1.0 # how far the supervised trainer must reach
+G_LOSS_BOUNDARY = 0.0 # how far the supervised trainer must reach
 LEARNING_RATE = 1e-3 * MAX_SEQ_LENGTH # 1e-3 is stable-ish, 1e-2 oscillates, 1e-4 is slow
 SEED = 88
 
@@ -377,7 +377,7 @@ def main():
         #if not startUnsup and latest_d_loss != None and latest_d_loss < 0.5:
         #    print('###### FREEZING DISCRIMINATOR')
         #    skipD = True
-        if (latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY) or epoch > 60:
+        if (latest_g_loss != None and latest_g_loss < G_LOSS_BOUNDARY) or epoch > 1000:
             startUnsup = True
         if startUnsup:
             skipG = False
